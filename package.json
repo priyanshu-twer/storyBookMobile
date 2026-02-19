@@ -21,6 +21,7 @@
     "@storybook/addon-ondevice-actions": "^10.2.3",
     "@storybook/addon-ondevice-controls": "^10.2.3",
     "@storybook/react-native": "^10.2.3",
+    "axios": "^1.13.5",
     "babel-loader": "^8.4.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
