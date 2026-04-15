@@ -11,9 +11,9 @@ module.exports = {
   github: {
     release: true,
     releaseName: 'v${version}',
-    releaseNotes: token => {
-      return token.changelog || 'Initial release or no changes detected.';
-    },
+    // releaseNotes: token => {
+    //   return token.changelog || 'Initial release or no changes detected.';
+    // },
     tokenRef: 'GITHUB_TOKEN',
   },
 
