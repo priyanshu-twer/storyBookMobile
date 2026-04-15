@@ -11,7 +11,8 @@ module.exports = {
   github: {
     release: true,
     releaseName: 'v${version}',
-    tokenRef: process.env.GITHUB_TOKEN,
+    repository: 'priyanshu-twer/storyBookMobile',
+    tokenRef: 'GITHUB_TOKEN',
   },
 
   npm: {
