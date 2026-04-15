@@ -11,10 +11,14 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import StorybookUI from './.rnstorybook';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
-
+const isStorybook = process.env.STORYBOOK_ENABLED === 'true';
+ if (true) {
+   return <StorybookUI />;
+ }
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
@@ -28,10 +32,10 @@ function AppContent() {
 
   return (
     <View style={styles.container}>
-      {/* <NewAppScreen
+      <NewAppScreen
         templateFileName="App.tsx"
         safeAreaInsets={safeAreaInsets}
-      /> */}
+      />
     </View>
   );
 }

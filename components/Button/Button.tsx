@@ -1,3 +1,4 @@
+import React from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -16,14 +17,14 @@ export interface ButtonProps {
 }
 
 /** Primary UI component for user interaction */
-export const Button = ({
+const Button: React.FC<ButtonProps> = ({
   primary = false,
   size = 'medium',
   backgroundColor,
   label,
   style,
   onPress,
-}: ButtonProps) => {
+}) => {
   const modeStyle = primary ? styles.primary : styles.secondary;
   const textModeStyle = primary ? styles.primaryText : styles.secondaryText;
 
@@ -31,7 +32,11 @@ export const Button = ({
   const textSizeStyle = textSizeStyles[size];
 
   return (
-    <TouchableOpacity accessibilityRole="button" activeOpacity={0.6} onPress={onPress}>
+    <TouchableOpacity
+      accessibilityRole="button"
+      activeOpacity={0.6}
+      onPress={onPress}
+    >
       <View
         style={[
           styles.button,
@@ -52,6 +57,8 @@ const styles = StyleSheet.create({
   button: {
     borderWidth: 0,
     borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonText: {
     fontWeight: '700',
@@ -99,3 +106,6 @@ const textSizeStyles = {
   medium: styles.mediumText,
   large: styles.largeText,
 };
+
+export { Button };
+export default Button;
