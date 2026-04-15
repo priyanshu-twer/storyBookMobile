@@ -14,7 +14,6 @@ module.exports = {
     releaseNotes: token => {
       return token.changelog || 'Initial release or no changes detected.';
     },
-    tokenRef: 'GITHUB_TOKEN',
   },
 
   npm: {
