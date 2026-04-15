@@ -1,5 +1,5 @@
-import { addons } from '@storybook/manager-api';
-import { create } from '@storybook/theming';
+import { addons } from 'storybook/manager-api';
+import { create } from 'storybook/theming';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { LogoRenderer } from '../.rnstorybook/stories/LogoRenderer';
@@ -9,6 +9,7 @@ const myTheme = create({
   base: 'light',
   brandTarget: '_self',
   appBg: '#fefefe',
+  colorSecondary: 'red',
 });
 
 addons.setConfig({
