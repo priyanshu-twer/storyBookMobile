@@ -11,10 +11,10 @@ module.exports = {
   github: {
     release: true,
     releaseName: 'v${version}',
+    tokenRef: process.env.GITHUB_TOKEN,
   },
 
   npm: {
     publish: false, // set true if you want automatic npm publish and provide NPM_TOKEN
   },
-  
 };
