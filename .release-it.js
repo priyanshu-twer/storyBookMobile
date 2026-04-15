@@ -11,7 +11,9 @@ module.exports = {
   github: {
     release: true,
     releaseName: 'v${version}',
-    repository: 'priyanshu-twer/storyBookMobile',
+    releaseNotes: token => {
+      return token.changelog || 'Initial release or no changes detected.';
+    },
     tokenRef: 'GITHUB_TOKEN',
   },
 
