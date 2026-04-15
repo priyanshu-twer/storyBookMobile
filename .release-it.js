@@ -5,15 +5,15 @@ module.exports = {
     requireCleanWorkingDir: false,
     commitMessage: 'chore(release): v${version}',
     tagName: 'v${version}',
-    push: true,
+    push: false,
   },
 
   github: {
     release: true,
     releaseName: 'v${version}',
-    // releaseNotes: token => {
-    //   return token.changelog || 'Initial release or no changes detected.';
-    // },
+    releaseNotes: token => {
+      return token.changelog || 'Initial release or no changes detected.';
+    },
     tokenRef: 'GITHUB_TOKEN',
   },
 
