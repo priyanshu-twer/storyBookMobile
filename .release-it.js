@@ -4,7 +4,7 @@ module.exports = {
   git: {
     requireCleanWorkingDir: false,
     commitMessage: 'chore(release): v${version}',
-    tagName: 'v${version}',
+    tagName: 'github@${version}',
     push: false,
   },
 
@@ -15,7 +15,12 @@ module.exports = {
       return token.changelog || 'Initial release or no changes detected.';
     },
   },
-
+  plugins: {
+    '@release-it/conventional-changelog': {
+      preset: 'conventionalcommits',
+      infile: 'CHANGELOG.md',
+    },
+  },
   npm: {
     publish: false, // set true if you want automatic npm publish and provide NPM_TOKEN
   },
