@@ -20,7 +20,7 @@ module.exports = {
       preset: 'conventionalcommits',
       infile: 'CHANGELOG.md',
     },
-  },
+  }, 
   npm: {
     publish: false, 
   },
