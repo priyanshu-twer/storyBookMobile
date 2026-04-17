@@ -1,5 +1,45 @@
 # Changelog
 
+## [3.0.1](https://github.com/priyanshu-twer/storyBookMobile/compare/v3.0.0...v@3.0.1) (2026-04-17)
+
+## 3.0.0 (2026-04-17)
+
+### ⚠ BREAKING CHANGES
+
+* 🧨 yes
+
+### Features
+
+* 🎸 edcwedwedew ([bf1b10b](https://github.com/priyanshu-twer/storyBookMobile/commit/bf1b10ba834541860a1b6d2e16293e7cff451360))
+
+### Miscellaneous Chores
+
+* 🤖 edwed ([a49a985](https://github.com/priyanshu-twer/storyBookMobile/commit/a49a9851ea856aa1afb81650f7c27c76df5cbb92))
+
+## 1.0.5 (2026-04-15)
+
+## 1.0.4 (2026-04-15)
+
+## 1.0.3 (2026-04-15)
+
+## 1.0.2 (2026-04-15)
+
+## 1.0.1 (2026-04-15)
+
+## 1.0.0 (2026-04-15)
+
+## 0.0.7 (2026-04-15)
+
+## 0.0.6 (2026-04-15)
+
+## 0.0.5 (2026-04-15)
+
+## 0.0.4 (2026-04-15)
+
+## 0.0.3 (2026-04-15)
+
+## 0.0.2 (2026-04-15)
+
 ## [3.0.0](https://github.com/priyanshu-twer/storyBookMobile/compare/v1.0.5...v3.0.0) (2026-04-17)
 
 ### ⚠ BREAKING CHANGES

@@ -1,16 +1,14 @@
-require('dotenv').config();
-
 module.exports = {
   git: {
     requireCleanWorkingDir: false,
     commitMessage: 'chore(release): v${version}',
-    tagName: 'github@${version}',
+    tagName: 'v@${version}',
     push: false,
   },
 
   github: {
     release: true,
-    releaseName: 'v${version}',
+    releaseName: 'github${version}',
     releaseNotes: token => {
       return token.changelog || 'Initial release or no changes detected.';
     },
