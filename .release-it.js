@@ -8,7 +8,6 @@ module.exports = {
 
   github: {
     release: true,
-    releaseName: 'github${version}',
     releaseNotes: token => {
       return token.changelog || 'Initial release or no changes detected.';
     },
@@ -17,6 +16,7 @@ module.exports = {
     '@release-it/conventional-changelog': {
       preset: 'conventionalcommits',
       infile: 'CHANGELOG.md',
+      ignoreRecommendBump: true
     },
   },
   npm: {
