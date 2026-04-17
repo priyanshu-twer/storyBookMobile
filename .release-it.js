@@ -10,7 +10,7 @@ module.exports = {
 
   github: {
     release: true, 
-    releaseName: 'v${version}',
+    releaseName: 'v${version}',  
     releaseNotes: token => {
       return token.changelog || 'Initial release or no changes detected.';
     },
