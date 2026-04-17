@@ -2,7 +2,7 @@ module.exports = {
   git: {
     requireCleanWorkingDir: false,
     commitMessage: 'chore(release): v${version}',
-    tagName: 'v@${version}',
+    tagName: 'bckwdw@${version}',
     push: false,
   },
 
