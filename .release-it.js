@@ -5,12 +5,12 @@ module.exports = {
     requireCleanWorkingDir: false,
     commitMessage: 'chore(release): v${version}',
     tagName: 'github@${version}',
-    push: false, 
+    push: false,
   },
 
   github: {
-    release: true, 
-    releaseName: 'v${version}',  
+    release: true,
+    releaseName: 'v${version}',
     releaseNotes: token => {
       return token.changelog || 'Initial release or no changes detected.';
     },
@@ -20,8 +20,8 @@ module.exports = {
       preset: 'conventionalcommits',
       infile: 'CHANGELOG.md',
     },
-  }, 
+  },
   npm: {
-    publish: false, 
+    publish: false,
   },
 };
