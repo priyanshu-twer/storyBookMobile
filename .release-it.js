@@ -22,6 +22,6 @@ module.exports = {
     },
   },
   npm: {
-    publish: false, // set true if you want automatic npm publish and provide NPM_TOKEN
+    publish: false, 
   },
 };

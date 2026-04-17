@@ -1,5 +1,7 @@
 # Changelog
 
+## [1.0.7](https://github.com/priyanshu-twer/storyBookMobile/compare/github@1.0.6...github@1.0.7) (2026-04-17)
+
 ## [1.0.6](https://github.com/priyanshu-twer/storyBookMobile/compare/v1.0.5...github@1.0.6) (2026-04-17)
 
 ## 1.0.5 (2026-04-15)
