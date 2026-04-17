@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.0](https://github.com/priyanshu-twer/storyBookMobile/compare/github@1.2.0...github@2.0.0) (2026-04-17)
+
+### ⚠ BREAKING CHANGES
+
+* 🧨 yes
+
+### Miscellaneous Chores
+
+* 🤖 edwed ([a49a985](https://github.com/priyanshu-twer/storyBookMobile/commit/a49a9851ea856aa1afb81650f7c27c76df5cbb92))
+
 ## [1.2.0](https://github.com/priyanshu-twer/storyBookMobile/compare/github@1.1.0...github@1.2.0) (2026-04-17)
 
 ## [1.1.0](https://github.com/priyanshu-twer/storyBookMobile/compare/github@1.0.7...github@1.1.0) (2026-04-17)
