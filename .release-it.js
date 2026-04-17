@@ -5,7 +5,7 @@ module.exports = {
     requireCleanWorkingDir: false,
     commitMessage: 'chore(release): v${version}',
     tagName: 'v${version}',
-    push: false,
+    push: false,  
   },
 
   github: {
