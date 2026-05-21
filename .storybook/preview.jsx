@@ -1,6 +1,8 @@
-import type { Preview } from '@storybook/react-native-web-vite';
+import React from 'react';
+import { ThemeProvider } from 'styled-components';
+import theme from '../theme';
 
-const preview: Preview = {
+const preview = {
   parameters: {
     options: {
       showPanel: false,
@@ -21,5 +23,14 @@ const preview: Preview = {
     },
   },
 };
+
+export const decorators = [
+  (Story, context) => (
+    <ThemeProvider theme={theme}>
+      {/* Call it as a function instead of a JSX element */}
+      {Story(context.args, context)}
+    </ThemeProvider>
+  ),
+];
 
 export default preview;

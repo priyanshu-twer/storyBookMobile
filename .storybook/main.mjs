@@ -1,10 +1,9 @@
-import type { StorybookConfig } from '@storybook/react-native-web-vite';
 
-const config: StorybookConfig = {
+const config = {
   stories: [
     '../stories/**/*.mdx',
     '../stories/**/*.stories.@(js|jsx|mjs|ts|tsx)',
-    '../components/**/*.stories.@(js|jsx|mjs|ts|tsx)',
+    // '../components/**/*.stories.@(js|jsx|mjs|ts|tsx)',
   ],
   addons: [
     '@chromatic-com/storybook',
@@ -13,5 +12,8 @@ const config: StorybookConfig = {
     '@storybook/addon-docs',
   ],
   framework: '@storybook/react-native-web-vite',
+  typescript: {
+    reactDocgen: 'react-docgen',
+  },
 };
 export default config;

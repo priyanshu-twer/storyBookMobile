@@ -1,11 +1,11 @@
-import React from 'react';
-import {Button} from './Button';
+import Button, { ButtonPropTypes } from './Button';
 
 export default {
   title: 'Component/ButtonJS',
   component: Button,
-    tags:  ['autodocs'],
-}
+  tags: ['autodocs'],
+  argTypes: ButtonPropTypes,
+};
 
 export const Primary = {
   args: {
@@ -13,7 +13,5 @@ export const Primary = {
     primary: true,
     size: 'medium',
   },
-  render: (args) => (
-    <Button {...args} />
-  )
+  render: args => <Button {...args} />,
 };

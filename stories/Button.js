@@ -25,15 +25,15 @@ const StyledButton = styled.button`
   border-radius: 48px;
   cursor: pointer;
   background-color: ${({ primary, theme, backgroundColor }) =>
-    primary ? theme.colors?.primary || '#1ea7fd' : backgroundColor || 'transparent'};
-  color: ${({ primary, theme }) => (primary ? theme.colors?.onPrimary || 'white' : theme.colors.text || '#333')};
+    primary ? theme.colors.primary : backgroundColor || 'transparent'};
+  color: ${({ primary, theme }) => (primary ? theme?.colors.onPrimary : theme?.colors.text)};
   padding: ${({ size }) => sizes[size].padding};
   font-size: ${({ size }) => sizes[size].fontSize};
   border: ${({ primary }) => (primary ? 'none' : '1px solid rgba(0, 0, 0, 0.15)')};
   opacity: ${({ disabled }) => (disabled ? 0.6 : 1)};
 `;
 
-export const Button = ({
+ const Button = ({
   label,
   primary,
   size,
@@ -69,7 +69,7 @@ export const Button = ({
   );
 };
 
-Button.propTypes = {
+export const ButtonPropTypes = {
   /** Text displayed inside the button */
   label: PropTypes.string.isRequired,
   /** If true, renders a primary style button */
@@ -93,7 +93,7 @@ Button.propTypes = {
   /** Theme object injected by withTheme */
   theme: PropTypes.object,
 };
-
+Button.propTypes = ButtonPropTypes;
 Button.defaultProps = {
   primary: false,
   size: 'medium',
@@ -106,5 +106,5 @@ Button.defaultProps = {
   style: undefined,
   theme: {},
 };
-
+// export { Button };
 export default withTheme(Button);
