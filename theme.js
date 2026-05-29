@@ -1,14 +1,22 @@
-// Theme definition for styled-components
-// Place this file in the project root or a dedicated src folder and import it where needed.
+// Theme definitions for styled-components
 
-export const theme = {
+export const lightTheme = {
   colors: {
-    primary: '#1ea7fd',          // Main brand color
-    onPrimary: '#ffffff',        // Text color on primary background
-    text: '#333333',             // Default text color
-    background: '#f5f5f5',       // Page background color (optional)
+    primary: '#1ea7fd',
+    onPrimary: '#ffffff',
+    text: '#333333',
+    background: '#ffffff',
   },
-  // You can extend this object with other design tokens (spacing, fonts, etc.)
 };
 
-export default theme;
+export const darkTheme = {
+  colors: {
+    primary: '#1ea7fd',
+    onPrimary: '#ffffff',
+    text: '#ffffff',
+    background: '#333333',
+  },
+};
+
+// Default export for backwards compatibility
+export default lightTheme;
