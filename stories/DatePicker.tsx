@@ -95,6 +95,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, placeho
         }}
         customInput={<CustomWebInput />}
         dateFormat="MM/dd/yyyy"
+        portalId='root-portal'
       />
     </Container>
   );
