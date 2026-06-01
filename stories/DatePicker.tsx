@@ -1,7 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
 import ReactDatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
 import './date.css';
 
 const Container = styled.div`
@@ -58,17 +57,15 @@ const IconWrapper = styled.span`
   align-items: center;
 `;
 
-
-interface DatePickerProps {
-  label?: string;
-  value: Date | null;
-  onChange: (date: Date) => void;
+interface CustomWebInputProps {
+  value?: string;
+  onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
   placeholder?: string;
 }
 
-const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, placeholder = 'Select date' }) => {
-  // Custom Input for ReactDatePicker to preserve custom styling
-  const CustomWebInput = React.forwardRef(({ value: formattedValue, onClick }: any, ref: any) => (
+// Custom Input for ReactDatePicker declared outside of the main component to prevent recreations
+const CustomWebInput = React.forwardRef<HTMLButtonElement, CustomWebInputProps>(
+  ({ value: formattedValue, onClick, placeholder = 'Select date' }, ref) => (
     <InputContainer ref={ref} onClick={onClick} type="button">
       <InputText>{formattedValue || placeholder}</InputText>
       <IconWrapper>
@@ -80,8 +77,19 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, placeho
         </svg>
       </IconWrapper>
     </InputContainer>
-  ));
+  )
+);
 
+CustomWebInput.displayName = 'CustomWebInput';
+
+interface DatePickerProps {
+  label?: string;
+  value: Date | null;
+  onChange: (date: Date) => void;
+  placeholder?: string;
+}
+
+const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, placeholder = 'Select date' }) => {
   return (
     <Container>
       {label ? <Label>{label}</Label> : null}
@@ -93,13 +101,12 @@ const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, placeho
             onChange(date);
           }
         }}
-        customInput={<CustomWebInput />}
+        customInput={<CustomWebInput placeholder={placeholder} />}
         dateFormat="MM/dd/yyyy"
-        portalId='root-portal'
+        formatWeekDay={(name) => (name ? name.slice(0, 3) : '')}
       />
     </Container>
   );
 };
 
 export default DatePicker;
-
