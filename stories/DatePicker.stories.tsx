@@ -19,3 +19,16 @@ export const Default = {
     );
   },
 };
+
+export const Cdbt = {
+  render: () => {
+    const [date, setDate] = useState<Date | null>(new Date());
+    return (
+      <DatePicker
+        label="Select Date"
+        value={date}
+        onChange={(newDate: Date) => setDate(newDate)}
+      />
+    );
+  },
+};
