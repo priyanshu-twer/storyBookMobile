@@ -1,0 +1,9 @@
+/* DatePicker.stories.css - Local Storybook overrides */
+.docs-story,
+.sbdocs-preview {
+  overflow: visible !important;
+}
+
+.docs-story:has(.react-datepicker-popper) {
+  z-index: 99999 !important;
+}

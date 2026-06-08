@@ -1,5 +1,5 @@
 import React from 'react';
-import { ThemeProvider } from 'styled-components';
+import { ThemeProvider, createGlobalStyle } from 'styled-components';
 import { DocsContainer } from '@storybook/addon-docs/blocks';
 import { themes } from 'storybook/theming';
 import { lightTheme, darkTheme } from '../theme';
@@ -8,18 +8,23 @@ const getTheme = (themeName) => {
   return themeName === 'dark' ? darkTheme : lightTheme;
 };
 
+const DesktopApplicationBackgroundGlobal = createGlobalStyle`
+  html, body, {
+    
+    color: blue;
+    margin: 0;
+    padding: 0;
+  }
+`;
+
 const ThemeWrapper = ({ themeName, children, isDocs }) => {
   const currentTheme = getTheme(themeName);
   return (
     <ThemeProvider theme={currentTheme}>
-      <div
-        style={{
-          // backgroundColor:currentTheme.colors.background,
-          color: currentTheme.colors.text,
-        }}
-      >
-        {children}
-      </div>
+      <DesktopApplicationBackgroundGlobal />
+
+      {children}
+
     </ThemeProvider>
   );
 };

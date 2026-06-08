@@ -240,34 +240,3 @@
   width: 1px !important;
   white-space: nowrap !important;
 }
-
-/* Storybook Docs Preview Override to prevent clipping without portals */
-.docs-story,
-.sbdocs-preview,
-.sb-story,
-[id^='story--'] {
-  position: relative !important;
-  overflow: visible !important;
-  transform: none !important;
-  clip-path: none !important;
-  z-index: 1 !important; /* Low base stack */
-}
-.sbdocs-preview > div {
-  overflow: visible !important;
-}
-.docs-story > div {
-  overflow: visible !important;
-}
-
-/* Dynamically elevate the story that has an open datepicker popper or focus, above all other stories */
-.docs-story:has(.react-datepicker-popper),
-.sbdocs-preview:has(.react-datepicker-popper),
-.sb-story:has(.react-datepicker-popper),
-[id^='story--']:has(.react-datepicker-popper),
-.docs-story:focus-within,
-.sbdocs-preview:focus-within,
-.sb-story:focus-within,
-[id^='story--']:focus-within {
-  z-index: 99999 !important; /* Bring active story to the absolute top stack */
-}
-
