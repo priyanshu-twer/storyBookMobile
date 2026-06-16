@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '../Button/Button';
-
+// import { Button } from '../Button/Button';
+import { Button } from 'react-native';
 export type HeaderProps = {
   user?: { name: string };
   onLogin: () => void;
