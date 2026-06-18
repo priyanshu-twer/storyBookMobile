@@ -5,18 +5,17 @@
  * @format
  */
 
-import { NewAppScreen } from '@react-native/new-app-screen';
 import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
 import {
   SafeAreaProvider,
-  useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import StorybookUI from './.rnstorybook';
+import ModalDemo from './components/ModalDemo';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
 const isStorybook = process.env.STORYBOOK_ENABLED === 'true';
- if (true) {
+ if (isStorybook) {
    return <StorybookUI />;
  }
   return (
@@ -28,14 +27,9 @@ const isStorybook = process.env.STORYBOOK_ENABLED === 'true';
 }
 
 function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
   return (
     <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
+     <ModalDemo />
     </View>
   );
 }
