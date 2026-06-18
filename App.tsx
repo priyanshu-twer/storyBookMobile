@@ -11,6 +11,7 @@ import {
 } from 'react-native-safe-area-context';
 import StorybookUI from './.rnstorybook';
 import ModalDemo from './components/ModalDemo';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -28,9 +29,11 @@ const isStorybook = process.env.STORYBOOK_ENABLED === 'true';
 
 function AppContent() {
   return (
-    <View style={styles.container}>
-     <ModalDemo />
-    </View>
+    <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
+      <View style={styles.container}>
+        <ModalDemo />
+      </View>
+    </KeyboardProvider>
   );
 }
 
