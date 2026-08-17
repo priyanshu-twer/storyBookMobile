@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 export const Container = styled(View)`
   flex: 1;
   padding: 24px;
-  background-color: #f4f6fa;
+  background-color: ${props => props.theme.colors?.body_bg || '#f4f6fa'};
   justify-content: center;
   align-items: center;
 `;
@@ -12,7 +12,7 @@ export const Container = styled(View)`
 export const Title = styled(Text)`
   font-size: 24px;
   font-weight: 700;
-  color: #1a202c;
+  color: ${props => props.theme.colors?.text || '#1a202c'};
   margin-bottom: 24px;
   text-align: center;
 `;
@@ -22,16 +22,17 @@ export const Button = styled(TouchableOpacity)<{ variant?: 'primary' | 'secondar
   padding-vertical: 16px;
   border-radius: 16px;
   background-color: ${props => {
+    const isDark = props.theme.colors?.background === '#0f172a';
     switch (props.variant) {
-      case 'secondary': return '#e2e8f0';
-      case 'danger': return '#fee2e2';
-      default: return '#1ea7fd';
+      case 'secondary': return isDark ? '#334155' : '#e2e8f0';
+      case 'danger': return isDark ? '#7f1d1d' : '#fee2e2';
+      default: return props.theme.colors?.primary || '#1ea7fd';
     }
   }};
   margin-vertical: 8px;
   align-items: center;
   justify-content: center;
-  shadow-color: ${props => (props.variant === 'primary' ? '#1ea7fd' : '#000')};
+  shadow-color: ${props => (props.variant === 'primary' ? (props.theme.colors?.primary || '#1ea7fd') : '#000')};
   shadow-opacity: 0.12;
   shadow-radius: 12px;
   elevation: 4;
@@ -41,10 +42,11 @@ export const ButtonText = styled(Text)<{ variant?: 'primary' | 'secondary' | 'da
   font-size: 16px;
   font-weight: 600;
   color: ${props => {
+    const isDark = props.theme.colors?.background === '#0f172a';
     switch (props.variant) {
-      case 'secondary': return '#4a5568';
-      case 'danger': return '#dc2626';
-      default: return '#ffffff';
+      case 'secondary': return isDark ? '#cbd5e1' : '#4a5568';
+      case 'danger': return isDark ? '#fca5a5' : '#dc2626';
+      default: return props.theme.colors?.on_primary || '#ffffff';
     }
   }};
 `;
@@ -70,7 +72,7 @@ export const AlertIconContainer = styled(View)`
   width: 64px;
   height: 64px;
   border-radius: 32px;
-  background-color: #e0f2fe;
+  background-color: ${props => props.theme.colors?.background === '#0f172a' ? '#1e293b' : '#e0f2fe'};
   justify-content: center;
   align-items: center;
   margin-bottom: 20px;
@@ -85,14 +87,14 @@ export const AlertCheckmarkText = styled(Text)`
 export const AlertTitle = styled(Text)`
   font-size: 20px;
   font-weight: 700;
-  color: #1e293b;
+  color: ${props => props.theme.colors?.text || '#1e293b'};
   margin-bottom: 10px;
   text-align: center;
 `;
 
 export const AlertMessage = styled(Text)`
   font-size: 14px;
-  color: #64748b;
+  color: ${props => props.theme.colors?.on_surface_variant || '#64748b'};
   text-align: center;
   margin-bottom: 26px;
   line-height: 22px;
@@ -133,7 +135,7 @@ export const OptionItem = styled(TouchableOpacity)`
   padding-vertical: 18px;
   padding-horizontal: 16px;
   border-radius: 12px;
-  background-color: #f8fafc;
+  background-color: ${props => props.theme.colors?.surface || '#f8fafc'};
   margin-bottom: 12px;
 `;
 
@@ -147,7 +149,7 @@ export const OptionBullet = styled(View)`
 export const OptionText = styled(Text)`
   font-size: 16px;
   font-weight: 500;
-  color: #334155;
+  color: ${props => props.theme.colors?.on_surface || '#334155'};
   margin-left: 12px;
 `;
 
@@ -194,7 +196,7 @@ export const ScrollBody = styled(ScrollView)`
 `;
 
 export const ContentCard = styled(View)`
-  background-color: #ffffff;
+  background-color: ${props => props.theme.colors?.card_bg || '#ffffff'};
   border-radius: 16px;
   padding: 20px;
   margin-bottom: 16px;
@@ -207,19 +209,19 @@ export const ContentCard = styled(View)`
 export const CardTitle = styled(Text)`
   font-size: 16px;
   font-weight: 600;
-  color: #334155;
+  color: ${props => props.theme.colors?.on_surface || '#334155'};
   margin-bottom: 8px;
 `;
 
 export const CardText = styled(Text)`
   font-size: 14px;
-  color: #64748b;
+  color: ${props => props.theme.colors?.on_surface_variant || '#64748b'};
   line-height: 22px;
 `;
 
 export const FooterBar = styled(View)`
   padding: 20px;
-  background-color: #ffffff;
+  background-color: ${props => props.theme.colors?.card_bg || '#ffffff'};
   flex-direction: row;
   justify-content: space-between;
   shadow-color: #000;
@@ -233,7 +235,7 @@ export const FooterButton = styled(TouchableOpacity)<{ primary?: boolean }>`
   margin-horizontal: 8px;
   padding-vertical: 14px;
   border-radius: 12px;
-  background-color: ${props => (props.primary ? '#1ea7fd' : '#f1f5f9')};
+  background-color: ${props => (props.primary ? (props.theme.colors?.primary || '#1ea7fd') : (props.theme.colors?.surface_variant || '#f1f5f9'))};
   align-items: center;
   justify-content: center;
 `;
@@ -241,11 +243,11 @@ export const FooterButton = styled(TouchableOpacity)<{ primary?: boolean }>`
 export const FooterButtonText = styled(Text)<{ primary?: boolean }>`
   font-size: 14px;
   font-weight: 600;
-  color: ${props => (props.primary ? '#ffffff' : '#475569')};
+  color: ${props => (props.primary ? (props.theme.colors?.on_primary || '#ffffff') : (props.theme.colors?.text || '#475569'))};
 `;
 
 export const InputModalContainer = styled(View)<{ bottomInset?: number }>`
-  background-color: #ffffff;
+  background-color: ${props => props.theme.colors?.card_bg || '#ffffff'};
   border-top-left-radius: 32px;
   border-top-right-radius: 32px;
   padding: 24px;
@@ -262,4 +264,24 @@ export const ModalSubmitButton = styled(Button)`
   margin-bottom: 0px;
 `;
 
+export const ThemeSwitcherContainer = styled(View)`
+  flex-direction: row;
+  justify-content: center;
+  margin-bottom: 30px;
+  background-color: ${props => props.theme.colors?.surface || '#f1f5f9'};
+  border-radius: 20px;
+  padding: 4px;
+`;
 
+export const ThemeOption = styled(TouchableOpacity)<{ active?: boolean }>`
+  padding-vertical: 8px;
+  padding-horizontal: 16px;
+  border-radius: 16px;
+  background-color: ${props => props.active ? (props.theme.colors?.primary || '#1ea7fd') : 'transparent'};
+`;
+
+export const ThemeOptionText = styled(Text)<{ active?: boolean }>`
+  font-size: 14px;
+  font-weight: 600;
+  color: ${props => props.active ? (props.theme.colors?.on_primary || '#ffffff') : (props.theme.colors?.on_surface || '#64748b')};
+`;

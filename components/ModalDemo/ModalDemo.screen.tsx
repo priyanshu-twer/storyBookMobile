@@ -3,7 +3,7 @@ import InputField from '../InputField/InputField';
 import Modal from '../Modal';
 import { ActiveModal, ModalDemoProps } from './types';
 import * as S from './ModalDemo.styles';
-
+import { useTheme } from '../../context/ThemeContext';
 export interface ModalDemoScreenProps extends ModalDemoProps {
   activeModal: ActiveModal;
   openModal: (type: ActiveModal) => void;
@@ -22,10 +22,24 @@ const ModalDemoScreen: React.FC<ModalDemoScreenProps> = ({
   handleFullScreenSubmit,
 }) => {
   const [inputValue, setInputValue] = useState('');
+  const { themeMode, setThemeMode } = useTheme();
 
   return (
-    <S.Container>
-      <S.Title>Modal Showcase</S.Title>
+    <>
+      <S.Container>
+        <S.Title>Modal Showcase</S.Title>
+
+      <S.ThemeSwitcherContainer>
+        <S.ThemeOption active={themeMode === 'light'} onPress={() => setThemeMode('light')}>
+          <S.ThemeOptionText active={themeMode === 'light'}>Light</S.ThemeOptionText>
+        </S.ThemeOption>
+        <S.ThemeOption active={themeMode === 'dark'} onPress={() => setThemeMode('dark')}>
+          <S.ThemeOptionText active={themeMode === 'dark'}>Dark</S.ThemeOptionText>
+        </S.ThemeOption>
+        <S.ThemeOption active={themeMode === 'system'} onPress={() => setThemeMode('system')}>
+          <S.ThemeOptionText active={themeMode === 'system'}>System</S.ThemeOptionText>
+        </S.ThemeOption>
+      </S.ThemeSwitcherContainer>
 
       <S.Button variant="primary" onPress={() => openModal('alert')}>
         <S.ButtonText variant="primary">Bottom Sheet Alert</S.ButtonText>
@@ -47,6 +61,7 @@ const ModalDemoScreen: React.FC<ModalDemoScreenProps> = ({
       <S.Button variant="primary" onPress={() => openModal('fullScreen')}>
         <S.ButtonText variant="primary">Bottom Sheet Scrollable Document</S.ButtonText>
       </S.Button>
+      </S.Container>
 
       {/* Bottom Sheet Alert Modal */}
       <Modal
@@ -187,7 +202,7 @@ const ModalDemoScreen: React.FC<ModalDemoScreenProps> = ({
           </S.FooterButton>
         </S.FooterBar>
       </Modal>
-    </S.Container>
+    </>
   );
 };
 

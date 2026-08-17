@@ -1,0 +1,8 @@
+--- components/Modal/Modal.tsx
++++ components/Modal/Modal.tsx
+@@ -45,6 +45,7 @@
+       avoidKeyboard={false}
+       statusBarTranslucent
++      coverScreen={false}
+       {...({ navigationBarTranslucent: true } as any)}
+     >

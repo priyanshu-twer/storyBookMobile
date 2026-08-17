@@ -44,7 +44,6 @@ export const Modal: React.FC<ModalProps> = ({
       useNativeDriverForBackdrop
       avoidKeyboard={false}
       statusBarTranslucent
-      coverScreen={false}
       {...({ navigationBarTranslucent: true } as any)}
     >
       {isVisible && (
