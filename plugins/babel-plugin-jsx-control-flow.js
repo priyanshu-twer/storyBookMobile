@@ -1,21 +1,16 @@
 /**
  * Babel Plugin: JSX Control Flow
- * Modernized version of `babel-plugin-jsx-control-statements` for Babel v7 and Babel v8.
- *
- * Implements:
- *   - <If condition={...}> ... <Else /> ... </If>
- *   - <If condition={...}> ... <Else> ... </Else> </If>
- *   - <Choose> <When condition={...}> ... </When> <Otherwise> ... </Otherwise> </Choose>
- *   - <When condition={...}> ... </When> (standalone)
- *   - <For each="item" of={items} index="idx"> ... </For>
- *   - <With a={1} b={2}> ... </With>
+ * Exact drop-in replacement for `babel-plugin-jsx-control-statements` (https://github.com/AlexGilleran/jsx-control-statements)
+ * Dual compatible with Babel v7 and Babel v8.
  */
 
-module.exports = function jcsPlugin({ types: t }) {
+module.exports = function jcsPlugin(babel) {
+  var types = babel.types;
+
   // ---------------------------------------------------------------------------
   // AST Utilities
   // ---------------------------------------------------------------------------
-  const astUtil = {
+  var astUtil = {
     isTag: function (node, tagName) {
       return (
         node &&
@@ -59,7 +54,7 @@ module.exports = function jcsPlugin({ types: t }) {
     },
 
     getKey: function (node) {
-      const key = astUtil.getAttributeMap(node).key;
+      var key = astUtil.getAttributeMap(node).key;
       return key && key.value ? key.value.value : undefined;
     },
 
@@ -68,7 +63,7 @@ module.exports = function jcsPlugin({ types: t }) {
     },
 
     addKeyAttribute: function (babelTypes, node, keyValue) {
-      let keyFound = false;
+      var keyFound = false;
 
       if (node && node.openingElement && node.openingElement.attributes) {
         node.openingElement.attributes.forEach(function (attrib) {
@@ -78,8 +73,8 @@ module.exports = function jcsPlugin({ types: t }) {
         });
 
         if (!keyFound) {
-          const keyAttrib = babelTypes.jsxAttribute(
-            babelTypes.jsxIdentifier('key'),
+          var keyAttrib = (babelTypes.jsxAttribute || babelTypes.jSXAttribute)(
+            (babelTypes.jsxIdentifier || babelTypes.jSXIdentifier)('key'),
             babelTypes.stringLiteral('' + keyValue)
           );
           node.openingElement.attributes.push(keyAttrib);
@@ -91,7 +86,7 @@ module.exports = function jcsPlugin({ types: t }) {
       if (!blocks || !blocks.length) {
         return babelTypes.nullLiteral ? babelTypes.nullLiteral() : babelTypes.NullLiteral();
       } else if (blocks.length === 1) {
-        const firstBlock = blocks[0];
+        var firstBlock = blocks[0];
 
         if (keyPrefix && firstBlock && firstBlock.openingElement) {
           astUtil.addKeyAttribute(babelTypes, firstBlock, keyPrefix);
@@ -100,10 +95,10 @@ module.exports = function jcsPlugin({ types: t }) {
         return firstBlock;
       }
 
-      for (let i = 0; i < blocks.length; i++) {
-        const thisBlock = blocks[i];
+      for (var i = 0; i < blocks.length; i++) {
+        var thisBlock = blocks[i];
         if (babelTypes.isJSXElement(thisBlock)) {
-          const key = keyPrefix ? keyPrefix + '-' + i : i;
+          var key = keyPrefix ? keyPrefix + '-' + i : i;
           astUtil.addKeyAttribute(babelTypes, thisBlock, key);
         }
       }
@@ -115,35 +110,20 @@ module.exports = function jcsPlugin({ types: t }) {
   // ---------------------------------------------------------------------------
   // Condition Utilities
   // ---------------------------------------------------------------------------
-  const conditionalUtil = {
+  var conditionalUtil = {
     getConditionExpression: function (node) {
-      const attrMap = astUtil.getAttributeMap(node);
-      let condition = attrMap.condition || attrMap.test || attrMap.is;
+      var attrMap = astUtil.getAttributeMap(node);
+      var condition = attrMap.condition || attrMap.test || attrMap.is;
 
       if (!condition) {
-        const attrs = Object.keys(attrMap);
-        if (attrs.length > 0) {
-          const firstAttrName = attrs[0];
-          const firstAttr = attrMap[firstAttrName];
-          if (firstAttr.value === null) {
-            return t.identifier(firstAttrName);
-          }
-          condition = firstAttr;
-        }
-      }
-
-      if (!condition) {
-        return t.booleanLiteral ? t.booleanLiteral(true) : t.BooleanLiteral(true);
+        return (types.booleanLiteral || types.BooleanLiteral)(true);
       }
 
       if (condition.value === null) {
-        return t.identifier(condition.name.name);
+        return (types.booleanLiteral || types.BooleanLiteral)(true);
       }
 
       if (astUtil.isExpressionContainer(condition)) {
-        if (t.isJSXEmptyExpression(condition.value.expression)) {
-          return t.booleanLiteral ? t.booleanLiteral(true) : t.BooleanLiteral(true);
-        }
         return astUtil.getExpression(condition);
       }
 
@@ -151,26 +131,26 @@ module.exports = function jcsPlugin({ types: t }) {
         return condition.value;
       }
 
-      return t.booleanLiteral ? t.booleanLiteral(true) : t.BooleanLiteral(true);
+      return (types.booleanLiteral || types.BooleanLiteral)(true);
     }
   };
 
   // ---------------------------------------------------------------------------
-  // Transformers
+  // Statement Transformers
   // ---------------------------------------------------------------------------
   function transformIf(node) {
-    const ifBlock = [];
-    const elseBlock = [];
-    let currentBlock = ifBlock;
-    const condition = conditionalUtil.getConditionExpression(node);
-    const key = astUtil.getKey(node);
-    const children = astUtil.getChildren(t, node);
+    var ifBlock = [];
+    var elseBlock = [];
+    var currentBlock = ifBlock;
+    var condition = conditionalUtil.getConditionExpression(node);
+    var key = astUtil.getKey(node);
+    var children = astUtil.getChildren(types, node);
 
     children.forEach(function (child) {
       if (astUtil.isTag(child, 'Else')) {
         currentBlock = elseBlock;
         if (child.children && child.children.length > 0) {
-          const nested = astUtil.getChildren(t, child);
+          var nested = astUtil.getChildren(types, child);
           nested.forEach(function (n) {
             currentBlock.push(n);
           });
@@ -180,10 +160,10 @@ module.exports = function jcsPlugin({ types: t }) {
       }
     });
 
-    const ifContent = astUtil.getSanitizedExpressionForContent(t, ifBlock, key);
-    const elseContent = astUtil.getSanitizedExpressionForContent(t, elseBlock, key);
+    var ifContent = astUtil.getSanitizedExpressionForContent(types, ifBlock, key);
+    var elseContent = astUtil.getSanitizedExpressionForContent(types, elseBlock, key);
 
-    return (t.conditionalExpression || t.ConditionalExpression)(
+    return (types.conditionalExpression || types.ConditionalExpression)(
       condition,
       ifContent,
       elseContent
@@ -191,28 +171,28 @@ module.exports = function jcsPlugin({ types: t }) {
   }
 
   function transformChoose(node) {
-    const children = astUtil.getChildren(t, node);
-    const key = astUtil.getKey(node);
-    const whenBlocks = [];
-    let otherwiseBlock = t.nullLiteral ? t.nullLiteral() : t.NullLiteral();
+    var children = astUtil.getChildren(types, node);
+    var key = astUtil.getKey(node);
+    var whenBlocks = [];
+    var otherwiseBlock = (types.nullLiteral || types.NullLiteral)();
 
     children.forEach(function (child) {
       if (astUtil.isTag(child, 'When')) {
-        const childNodes = astUtil.getChildren(t, child);
+        var childNodes = astUtil.getChildren(types, child);
         whenBlocks.push({
           condition: conditionalUtil.getConditionExpression(child),
-          children: astUtil.getSanitizedExpressionForContent(t, childNodes, key)
+          children: astUtil.getSanitizedExpressionForContent(types, childNodes, key)
         });
       } else if (astUtil.isTag(child, 'Otherwise')) {
-        const otherwiseNodes = astUtil.getChildren(t, child);
-        otherwiseBlock = astUtil.getSanitizedExpressionForContent(t, otherwiseNodes, key);
+        var otherwiseNodes = astUtil.getChildren(types, child);
+        otherwiseBlock = astUtil.getSanitizedExpressionForContent(types, otherwiseNodes, key);
       }
     });
 
-    let ternaryExpression = otherwiseBlock;
+    var ternaryExpression = otherwiseBlock;
 
-    for (let i = whenBlocks.length - 1; i >= 0; i--) {
-      ternaryExpression = (t.conditionalExpression || t.ConditionalExpression)(
+    for (var i = whenBlocks.length - 1; i >= 0; i--) {
+      ternaryExpression = (types.conditionalExpression || types.ConditionalExpression)(
         whenBlocks[i].condition,
         whenBlocks[i].children,
         ternaryExpression
@@ -223,13 +203,13 @@ module.exports = function jcsPlugin({ types: t }) {
   }
 
   function transformWhen(node) {
-    const key = astUtil.getKey(node);
-    const childNodes = astUtil.getChildren(t, node);
-    const condition = conditionalUtil.getConditionExpression(node);
-    const children = astUtil.getSanitizedExpressionForContent(t, childNodes, key);
-    const nullLit = t.nullLiteral ? t.nullLiteral() : t.NullLiteral();
+    var key = astUtil.getKey(node);
+    var childNodes = astUtil.getChildren(types, node);
+    var condition = conditionalUtil.getConditionExpression(node);
+    var children = astUtil.getSanitizedExpressionForContent(types, childNodes, key);
+    var nullLit = (types.nullLiteral || types.NullLiteral)();
 
-    return (t.conditionalExpression || t.ConditionalExpression)(
+    return (types.conditionalExpression || types.ConditionalExpression)(
       condition,
       children,
       nullLit
@@ -237,49 +217,51 @@ module.exports = function jcsPlugin({ types: t }) {
   }
 
   function transformFor(node) {
-    const mapParams = [];
-    const attributes = astUtil.getAttributeMap(node);
-    const children = astUtil.getChildren(t, node);
-    const returnExpression = astUtil.getSanitizedExpressionForContent(t, children);
+    var mapParams = [];
+    var attributes = astUtil.getAttributeMap(node);
+    var children = astUtil.getChildren(types, node);
+    var returnExpression = astUtil.getSanitizedExpressionForContent(types, children);
 
     if (!attributes.of) {
       return returnExpression;
     }
 
     if (attributes.each && attributes.each.value) {
-      mapParams.push(t.identifier(attributes.each.value.value));
+      mapParams.push(types.identifier(attributes.each.value.value));
     } else {
-      mapParams.push(t.identifier('item'));
+      mapParams.push(types.identifier('item'));
     }
 
     if (attributes.index && attributes.index.value) {
-      mapParams.push(t.identifier(attributes.index.value.value));
+      mapParams.push(types.identifier(attributes.index.value.value));
     }
 
-    const ofExpr = astUtil.isExpressionContainer(attributes.of)
+    var ofExpr = astUtil.isExpressionContainer(attributes.of)
       ? attributes.of.value.expression
       : attributes.of.value;
 
-    return t.callExpression(
-      t.memberExpression(ofExpr, t.identifier('map')),
+    return types.callExpression(
+      types.memberExpression(ofExpr, types.identifier('map')),
       [
-        t.arrowFunctionExpression(
+        types.functionExpression(
+          null,
           mapParams,
-          returnExpression
-        )
+          types.blockStatement([types.returnStatement(returnExpression)])
+        ),
+        types.identifier('this')
       ]
     );
   }
 
   function transformWith(node) {
-    const params = [];
-    const values = [];
-    const key = astUtil.getKey(node);
-    const attributes = astUtil.getAttributeMap(node);
-    const children = astUtil.getChildren(t, node);
+    var params = [];
+    var values = [];
+    var key = astUtil.getKey(node);
+    var attributes = astUtil.getAttributeMap(node);
+    var children = astUtil.getChildren(types, node);
 
     Object.keys(attributes).forEach(function (attr) {
-      params.push(t.identifier(attr));
+      params.push(types.identifier(attr));
       if (astUtil.isExpressionContainer(attributes[attr])) {
         values.push(attributes[attr].value.expression);
       } else {
@@ -287,16 +269,24 @@ module.exports = function jcsPlugin({ types: t }) {
       }
     });
 
-    return t.callExpression(
-      t.arrowFunctionExpression(
-        params,
-        astUtil.getSanitizedExpressionForContent(t, children, key)
+    return types.callExpression(
+      types.memberExpression(
+        types.functionExpression(
+          null,
+          params,
+          types.blockStatement([
+            types.returnStatement(
+              astUtil.getSanitizedExpressionForContent(types, children, key)
+            )
+          ])
+        ),
+        types.identifier('call')
       ),
       values
     );
   }
 
-  const handlers = {
+  var nodeHandlers = {
     If: transformIf,
     Choose: transformChoose,
     When: transformWhen,
@@ -312,24 +302,15 @@ module.exports = function jcsPlugin({ types: t }) {
           return;
         }
 
-        const nodeName = path.node.openingElement.name.name;
-        const handler = handlers[nodeName];
+        var nodeName = path.node.openingElement.name.name;
+        var handler = nodeHandlers[nodeName];
 
         if (handler) {
-          // If When is inside Choose, transformChoose handles it
           if (nodeName === 'When' && path.parentPath && path.parentPath.node && astUtil.isTag(path.parentPath.node, 'Choose')) {
             return;
           }
 
-          const replacement = handler(path.node);
-
-          if (replacement) {
-            if (t.isJSXElement(path.parent) || t.isJSXFragment(path.parent)) {
-              path.replaceWith(t.jsxExpressionContainer(replacement));
-            } else {
-              path.replaceWith(replacement);
-            }
-          }
+          path.replaceWith(handler(path.node, path.hub ? path.hub.file : undefined));
         }
       }
     }
