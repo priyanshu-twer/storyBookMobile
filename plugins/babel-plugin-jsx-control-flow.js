@@ -115,12 +115,25 @@ module.exports = function jcsPlugin(babel) {
       var attrMap = astUtil.getAttributeMap(node);
       var condition = attrMap.condition || attrMap.test || attrMap.is;
 
+      // If no explicit condition/test/is attribute, check for boolean prop like <If isVertical />
+      if (!condition) {
+        var attrs = Object.keys(attrMap);
+        if (attrs.length > 0) {
+          var firstAttrName = attrs[0];
+          var firstAttr = attrMap[firstAttrName];
+          if (firstAttr.value === null) {
+            return types.identifier(firstAttrName);
+          }
+          condition = firstAttr;
+        }
+      }
+
       if (!condition) {
         return types.booleanLiteral ? types.booleanLiteral(true) : types.BooleanLiteral(true);
       }
 
       if (condition.value === null) {
-        return types.booleanLiteral ? types.booleanLiteral(true) : types.BooleanLiteral(true);
+        return types.identifier(condition.name.name);
       }
 
       if (astUtil.isExpressionContainer(condition)) {
@@ -179,13 +192,13 @@ module.exports = function jcsPlugin(babel) {
   function transformChoose(node) {
     var children = astUtil.getChildren(types, node);
     var key = astUtil.getKey(node);
-    var whenBlocks = [];
+    var whenBranches = [];
     var otherwiseBlock = types.nullLiteral ? types.nullLiteral() : types.NullLiteral();
 
     children.forEach(function (child) {
       if (astUtil.isTag(child, 'When')) {
         var childNodes = astUtil.getChildren(types, child);
-        whenBlocks.push({
+        whenBranches.push({
           condition: conditionalUtil.getConditionExpression(child),
           children: astUtil.getSanitizedExpressionForContent(types, childNodes, key)
         });
@@ -197,10 +210,10 @@ module.exports = function jcsPlugin(babel) {
 
     var ternaryExpression = otherwiseBlock;
 
-    for (var i = whenBlocks.length - 1; i >= 0; i--) {
+    for (var i = whenBranches.length - 1; i >= 0; i--) {
       ternaryExpression = (types.conditionalExpression || types.ConditionalExpression)(
-        whenBlocks[i].condition,
-        whenBlocks[i].children,
+        whenBranches[i].condition,
+        whenBranches[i].children,
         ternaryExpression
       );
     }
