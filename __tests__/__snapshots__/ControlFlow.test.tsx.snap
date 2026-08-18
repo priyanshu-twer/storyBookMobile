@@ -1,0 +1,95 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`JSX Control Flow Tests Avatar renders image when imageSource provided 1`] = `
+<View
+  accessibilityLabel="size-JUMBO"
+  testID="Avatar"
+>
+  <Image
+    accessibilityLabel="size-JUMBO"
+    source={
+      {
+        "uri": "https://example.com/avatar.png",
+      }
+    }
+    testID="image"
+  />
+</View>
+`;
+
+exports[`JSX Control Flow Tests Avatar renders initial text when initial provided 1`] = `
+<View
+  testID="Avatar"
+>
+  <Text
+    style={
+      {
+        "fontSize": 14,
+        "fontWeight": "bold",
+      }
+    }
+  >
+    AB
+  </Text>
+</View>
+`;
+
+exports[`JSX Control Flow Tests StatusTracker renders default props with snapshot match 1`] = `
+<View
+  testID="StatusTracker"
+>
+  <View
+    testID="TrackerStep"
+  >
+    <Text
+      testID="status-success"
+    >
+      Completed
+    </Text>
+    <View
+      testID="TextWrapper"
+    >
+      <Text>
+        Order Placed
+      </Text>
+      <Text>
+        24 Jan 19, 13:52
+      </Text>
+    </View>
+  </View>
+  <View
+    testID="TrackerStep"
+  >
+    <Text
+      testID="status-pending"
+    >
+      Pending
+    </Text>
+    <View
+      testID="TextWrapper"
+    >
+      <Text>
+        Processing
+      </Text>
+      <Text>
+        25 Jan 19, 11:22
+      </Text>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`JSX Control Flow Tests Step component renders correct label based on StepNumber 1`] = `
+<View
+  testID="step-container"
+>
+  <View
+    testID="image-container"
+  />
+  <View>
+    <Text>
+      Label 2
+    </Text>
+  </View>
+</View>
+`;

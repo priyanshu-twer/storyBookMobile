@@ -1,186 +1,265 @@
 /**
  * Babel Plugin: JSX Control Flow
- * Modernized version of `babel-plugin-jsx-control-statements` for Babel v7 and Babel v8.
- *
- * Implements:
- *   - <If condition={...}> ... <Else /> ... </If>
- *   - <If condition={...}> ... <Else> ... </Else> </If>
- *   - <Choose> <When condition={...}> ... </When> <Otherwise> ... </Otherwise> </Choose>
- *   - Standalone <When condition={...}> ... </When>
+ * Direct port of `babel-plugin-jsx-control-statements` (https://github.com/AlexGilleran/jsx-control-statements)
+ * Updated for Babel v7 & Babel v8 compatibility.
  */
-module.exports = function ({ types: t }) {
-  /**
-   * Helper: Get element tag name.
-   */
-  function getTagName(node) {
-    if (t.isJSXElement(node) && t.isJSXIdentifier(node.openingElement.name)) {
-      return node.openingElement.name.name;
-    }
-    return null;
-  }
 
-  /**
-   * Helper: Test if a node is a JSX element with a specific tag name.
-   */
-  function isTag(node, tagName) {
-    return t.isJSXElement(node) && getTagName(node) === tagName;
-  }
+module.exports = function jcsPlugin(babel) {
+  var types = babel.types;
 
-  /**
-   * Helper: Extract condition expression from attributes.
-   * Supports: condition={expr}, test={expr}, is={expr}, or boolean flag <When condition />
-   */
-  function getConditionExpression(node) {
-    const attr = node.openingElement.attributes.find(
-      (a) =>
-        t.isJSXAttribute(a) &&
-        (a.name.name === 'condition' ||
-          a.name.name === 'test' ||
-          a.name.name === 'is')
-    );
+  // ---------------------------------------------------------------------------
+  // astUtil
+  // ---------------------------------------------------------------------------
+  var astUtil = {
+    isTag: function (node, tagName) {
+      return (
+        node &&
+        node.type === 'JSXElement' &&
+        node.openingElement &&
+        node.openingElement.name &&
+        node.openingElement.name.name === tagName
+      );
+    },
 
-    if (!attr) {
-      return t.booleanLiteral(true);
-    }
+    isExpressionContainer: function (attribute) {
+      return (
+        attribute &&
+        attribute.value &&
+        attribute.value.type === 'JSXExpressionContainer'
+      );
+    },
 
-    if (attr.value === null) {
-      return t.booleanLiteral(true);
-    }
+    getExpression: function (attribute) {
+      return attribute.value.expression;
+    },
 
-    if (t.isJSXExpressionContainer(attr.value)) {
-      if (t.isJSXEmptyExpression(attr.value.expression)) {
-        return t.booleanLiteral(true);
+    isStringLiteral: function (attribute) {
+      return (
+        attribute &&
+        attribute.value &&
+        attribute.value.type === 'StringLiteral'
+      );
+    },
+
+    getAttributeMap: function (node) {
+      if (!node || !node.openingElement || !node.openingElement.attributes) {
+        return {};
       }
-      return attr.value.expression;
+      return node.openingElement.attributes.reduce(function (result, attr) {
+        if (attr && attr.name && attr.name.name) {
+          result[attr.name.name] = attr;
+        }
+        return result;
+      }, {});
+    },
+
+    getKey: function (node) {
+      var key = astUtil.getAttributeMap(node).key;
+      return key && key.value ? key.value.value : undefined;
+    },
+
+    getChildren: function (babelTypes, node) {
+      return babelTypes.react.buildChildren(node);
+    },
+
+    addKeyAttribute: function (babelTypes, node, keyValue) {
+      var keyFound = false;
+
+      if (node && node.openingElement && node.openingElement.attributes) {
+        node.openingElement.attributes.forEach(function (attrib) {
+          if (babelTypes.isJSXAttribute(attrib) && attrib.name.name === 'key') {
+            keyFound = true;
+          }
+        });
+
+        if (!keyFound) {
+          var keyAttrib = babelTypes.jsxAttribute(
+            babelTypes.jsxIdentifier('key'),
+            babelTypes.stringLiteral('' + keyValue)
+          );
+          node.openingElement.attributes.push(keyAttrib);
+        }
+      }
+    },
+
+    getSanitizedExpressionForContent: function (babelTypes, blocks, keyPrefix) {
+      if (!blocks || !blocks.length) {
+        return babelTypes.nullLiteral ? babelTypes.nullLiteral() : babelTypes.NullLiteral();
+      } else if (blocks.length === 1) {
+        var firstBlock = blocks[0];
+
+        if (keyPrefix && firstBlock && firstBlock.openingElement) {
+          astUtil.addKeyAttribute(babelTypes, firstBlock, keyPrefix);
+        }
+
+        return firstBlock;
+      }
+
+      for (var i = 0; i < blocks.length; i++) {
+        var thisBlock = blocks[i];
+        if (babelTypes.isJSXElement(thisBlock)) {
+          var key = keyPrefix ? keyPrefix + '-' + i : i;
+          astUtil.addKeyAttribute(babelTypes, thisBlock, key);
+        }
+      }
+
+      return babelTypes.arrayExpression(blocks);
     }
+  };
 
-    if (t.isStringLiteral(attr.value)) {
-      return attr.value;
+  // ---------------------------------------------------------------------------
+  // conditionalUtil
+  // ---------------------------------------------------------------------------
+  var conditionalUtil = {
+    getConditionExpression: function (node) {
+      var attrMap = astUtil.getAttributeMap(node);
+      var condition = attrMap.condition || attrMap.test || attrMap.is;
+
+      if (!condition) {
+        return types.booleanLiteral ? types.booleanLiteral(true) : types.BooleanLiteral(true);
+      }
+
+      if (condition.value === null) {
+        return types.booleanLiteral ? types.booleanLiteral(true) : types.BooleanLiteral(true);
+      }
+
+      if (astUtil.isExpressionContainer(condition)) {
+        if (types.isJSXEmptyExpression(condition.value.expression)) {
+          return types.booleanLiteral ? types.booleanLiteral(true) : types.BooleanLiteral(true);
+        }
+        return astUtil.getExpression(condition);
+      }
+
+      if (astUtil.isStringLiteral(condition)) {
+        return condition.value;
+      }
+
+      return types.booleanLiteral ? types.booleanLiteral(true) : types.BooleanLiteral(true);
     }
+  };
 
-    return t.booleanLiteral(true);
-  }
-
-  /**
-   * Helper: Uses Babel's built-in react.buildChildren to correctly normalize
-   * JSX children (handling whitespace, strings, and expression containers).
-   */
-  function getChildren(node) {
-    return t.react.buildChildren(node);
-  }
-
-  /**
-   * Helper: Returns single expression, NullLiteral, or ArrayExpression
-   * (matching original jsx-control-statements getSanitizedExpressionForContent).
-   */
-  function getSanitizedExpressionForContent(blocks) {
-    if (!blocks || !blocks.length) {
-      return t.nullLiteral();
-    }
-    if (blocks.length === 1) {
-      return blocks[0];
-    }
-    return t.arrayExpression(blocks);
-  }
-
-  /**
-   * Transforms <If condition={...}> ... <Else> ... </Else> </If>
-   */
+  // ---------------------------------------------------------------------------
+  // transformIf
+  // ---------------------------------------------------------------------------
   function transformIf(node) {
-    const children = getChildren(node);
-    const ifBlock = [];
-    const elseBlock = [];
-    let currentBlock = ifBlock;
+    var ifBlock = [];
+    var elseBlock = [];
+    var currentBlock = ifBlock;
+    var condition = conditionalUtil.getConditionExpression(node);
+    var key = astUtil.getKey(node);
+    var children = astUtil.getChildren(types, node);
 
-    children.forEach((child) => {
-      if (isTag(child, 'Else')) {
+    children.forEach(function (child) {
+      if (astUtil.isTag(child, 'Else')) {
         currentBlock = elseBlock;
         if (child.children && child.children.length > 0) {
-          const nested = getChildren(child);
-          nested.forEach((n) => currentBlock.push(n));
+          var nested = astUtil.getChildren(types, child);
+          nested.forEach(function (n) {
+            currentBlock.push(n);
+          });
         }
       } else {
         currentBlock.push(child);
       }
     });
 
-    const condition = getConditionExpression(node);
-    const consequent = getSanitizedExpressionForContent(ifBlock);
-    const alternate = getSanitizedExpressionForContent(elseBlock);
+    var ifContent = astUtil.getSanitizedExpressionForContent(types, ifBlock, key);
+    var elseContent = astUtil.getSanitizedExpressionForContent(types, elseBlock, key);
 
-    return t.conditionalExpression(condition, consequent, alternate);
-  }
-
-  /**
-   * Transforms <Choose> <When condition={...}> ... </When> <Otherwise> ... </Otherwise> </Choose>
-   */
-  function transformChoose(node) {
-    const children = getChildren(node);
-    const whenBlocks = [];
-    let otherwiseBlock = t.nullLiteral();
-
-    children.forEach((child) => {
-      if (isTag(child, 'When')) {
-        const childNodes = getChildren(child);
-        whenBlocks.push({
-          condition: getConditionExpression(child),
-          children: getSanitizedExpressionForContent(childNodes),
-        });
-      } else if (isTag(child, 'Otherwise')) {
-        const childNodes = getChildren(child);
-        otherwiseBlock = getSanitizedExpressionForContent(childNodes);
-      }
-    });
-
-    let result = otherwiseBlock;
-    for (let i = whenBlocks.length - 1; i >= 0; i--) {
-      result = t.conditionalExpression(
-        whenBlocks[i].condition,
-        whenBlocks[i].children,
-        result
-      );
-    }
-    return result;
-  }
-
-  /**
-   * Transforms standalone <When condition={...}> ... </When>
-   */
-  function transformWhen(node) {
-    const childNodes = getChildren(node);
-    return t.conditionalExpression(
-      getConditionExpression(node),
-      getSanitizedExpressionForContent(childNodes),
-      t.nullLiteral()
+    return (types.conditionalExpression || types.ConditionalExpression)(
+      condition,
+      ifContent,
+      elseContent
     );
   }
 
-  return {
-    name: 'jsx-control-flow',
-    visitor: {
-      JSXElement(path) {
-        const name = getTagName(path.node);
-        let replacement = null;
+  // ---------------------------------------------------------------------------
+  // transformChoose
+  // ---------------------------------------------------------------------------
+  function transformChoose(node) {
+    var children = astUtil.getChildren(types, node);
+    var key = astUtil.getKey(node);
+    var whenBlocks = [];
+    var otherwiseBlock = types.nullLiteral ? types.nullLiteral() : types.NullLiteral();
 
-        if (name === 'If') {
-          replacement = transformIf(path.node);
-        } else if (name === 'Choose') {
-          replacement = transformChoose(path.node);
-        } else if (name === 'When') {
-          // Only transform standalone When (when not inside Choose)
-          if (!path.parentPath || getTagName(path.parentPath.node) !== 'Choose') {
+    children.forEach(function (child) {
+      if (astUtil.isTag(child, 'When')) {
+        var childNodes = astUtil.getChildren(types, child);
+        whenBlocks.push({
+          condition: conditionalUtil.getConditionExpression(child),
+          children: astUtil.getSanitizedExpressionForContent(types, childNodes, key)
+        });
+      } else if (astUtil.isTag(child, 'Otherwise')) {
+        var otherwiseNodes = astUtil.getChildren(types, child);
+        otherwiseBlock = astUtil.getSanitizedExpressionForContent(types, otherwiseNodes, key);
+      }
+    });
+
+    var ternaryExpression = otherwiseBlock;
+
+    for (var i = whenBlocks.length - 1; i >= 0; i--) {
+      ternaryExpression = (types.conditionalExpression || types.ConditionalExpression)(
+        whenBlocks[i].condition,
+        whenBlocks[i].children,
+        ternaryExpression
+      );
+    }
+
+    return ternaryExpression;
+  }
+
+  // ---------------------------------------------------------------------------
+  // transformWhen (Standalone)
+  // ---------------------------------------------------------------------------
+  function transformWhen(node) {
+    var key = astUtil.getKey(node);
+    var childNodes = astUtil.getChildren(types, node);
+    var condition = conditionalUtil.getConditionExpression(node);
+    var children = astUtil.getSanitizedExpressionForContent(types, childNodes, key);
+    var nullLit = types.nullLiteral ? types.nullLiteral() : types.NullLiteral();
+
+    return (types.conditionalExpression || types.ConditionalExpression)(
+      condition,
+      children,
+      nullLit
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plugin Visitor
+  // ---------------------------------------------------------------------------
+  var nodeHandlers = {
+    If: transformIf,
+    Choose: transformChoose
+  };
+
+  return {
+    visitor: {
+      JSXElement: function (path) {
+        if (!path.node || !path.node.openingElement || !path.node.openingElement.name) {
+          return;
+        }
+
+        var nodeName = path.node.openingElement.name.name;
+        var handler = nodeHandlers[nodeName];
+        var replacement = null;
+
+        if (handler) {
+          replacement = handler(path.node);
+        } else if (nodeName === 'When') {
+          if (!path.parentPath || !path.parentPath.node || !astUtil.isTag(path.parentPath.node, 'Choose')) {
             replacement = transformWhen(path.node);
           }
         }
 
         if (replacement) {
-          if (t.isJSXElement(path.parent) || t.isJSXFragment(path.parent)) {
-            path.replaceWith(t.jsxExpressionContainer(replacement));
+          if (types.isJSXElement(path.parent) || types.isJSXFragment(path.parent)) {
+            path.replaceWith(types.jsxExpressionContainer(replacement));
           } else {
             path.replaceWith(replacement);
           }
         }
-      },
-    },
+      }
+    }
   };
 };
