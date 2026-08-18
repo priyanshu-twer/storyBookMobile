@@ -3,6 +3,7 @@
  * 
  * Provides compile-time transformation for:
  *   1. <If condition={...}> ... <Else> ... </Else> </If>
+ *      and <If condition={...}> ... <Else /> ... </If>
  *   2. <Choose>
  *        <When condition={...}> ... </When>
  *        <Otherwise> ... </Otherwise>
@@ -152,11 +153,13 @@ module.exports = function ({ types: t }) {
 
           // -----------------------------------------------------------------
           // 1. <If condition={...}> ... <Else> ... </Else> </If>
+          //    or <If condition={...}> ... <Else /> ... </If>
           // -----------------------------------------------------------------
           if (tagName === 'If') {
             const condition = getConditionExpression(path.node);
             const thenChildren = [];
             const elseChildren = [];
+            let inElse = false;
 
             for (const child of path.node.children) {
               if (t.isJSXText(child) && /^\s*[\r\n]+\s*$/.test(child.value)) {
@@ -164,9 +167,16 @@ module.exports = function ({ types: t }) {
               }
 
               if (getTagName(child) === 'Else') {
-                for (const elseChild of child.children) {
-                  elseChildren.push(elseChild);
+                inElse = true;
+                // If <Else> wraps its children: <Else><B /></Else>
+                if (child.children && child.children.length > 0) {
+                  for (const elseChild of child.children) {
+                    elseChildren.push(elseChild);
+                  }
                 }
+              } else if (inElse) {
+                // If <Else /> was used as a separator: <If><A /><Else /><B /></If>
+                elseChildren.push(child);
               } else {
                 thenChildren.push(child);
               }
