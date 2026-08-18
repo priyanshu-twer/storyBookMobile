@@ -7,7 +7,5 @@ module.exports = {
     When: 'readonly',
     Choose: 'readonly',
     Otherwise: 'readonly',
-    For: 'readonly',
-    With: 'readonly',
   },
 };

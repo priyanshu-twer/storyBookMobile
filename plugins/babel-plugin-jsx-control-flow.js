@@ -1,18 +1,15 @@
 /**
  * Babel Plugin: JSX Control Flow
- * Exact 1-to-1 equivalent of `jsx-control-statements`
- *
- * Supported Statements:
- * 1. <If condition={test}>thenBlock</If>
- * 2. <If condition={test}>thenBlock<Else>elseBlock</Else></If>
- * 3. <Choose>
- *      <When condition={test1}>branch1</When>
- *      <When condition={test2}>branch2</When>
- *      <Otherwise>defaultBranch</Otherwise>
- *    </Choose>
- * 4. <When condition={test}>branch</When> (Standalone)
- * 5. <For each="item" of={items} index="i">body</For>
- * 6. <With foo={bar} baz={qux}>body</With>
+ * 
+ * Provides compile-time transformation for:
+ *   1. <If condition={...}> ... <Else> ... </Else> </If>
+ *   2. <Choose>
+ *        <When condition={...}> ... </When>
+ *        <Otherwise> ... </Otherwise>
+ *      </Choose>
+ *   3. Standalone <When condition={...}> ... </When>
+ *   4. Standalone <Otherwise> ... </Otherwise>
+ *   5. Standalone <Else> ... </Else>
  */
 module.exports = function ({ types: t }) {
   /**
@@ -26,7 +23,8 @@ module.exports = function ({ types: t }) {
   }
 
   /**
-   * Helper: Extract condition expression from attributes (supports condition, test, is, or boolean flag).
+   * Helper: Extract condition expression from attributes.
+   * Supports: condition={expr}, test={expr}, is={expr}, or boolean flag <When condition />
    */
   function getConditionExpression(node) {
     const attr = node.openingElement.attributes.find(
@@ -64,12 +62,14 @@ module.exports = function ({ types: t }) {
    */
   function cleanJSXChildren(children) {
     return children.filter((child) => {
+      // Filter out comments like {/* some comment */}
       if (
         t.isJSXExpressionContainer(child) &&
         t.isJSXEmptyExpression(child.expression)
       ) {
         return false;
       }
+      // Filter out formatting newlines and indentation
       if (t.isJSXText(child) && /^\s*[\r\n]+\s*$/.test(child.value)) {
         return false;
       }
@@ -124,6 +124,7 @@ module.exports = function ({ types: t }) {
       return child;
     }
 
+    // Multiple children -> wrap in a JSX Fragment <>{children}</>
     return t.jsxFragment(
       t.jsxOpeningFragment(),
       t.jsxClosingFragment(),
@@ -149,7 +150,9 @@ module.exports = function ({ types: t }) {
         exit(path) {
           const tagName = getTagName(path.node);
 
-          // 1. <If>
+          // -----------------------------------------------------------------
+          // 1. <If condition={...}> ... <Else> ... </Else> </If>
+          // -----------------------------------------------------------------
           if (tagName === 'If') {
             const condition = getConditionExpression(path.node);
             const thenChildren = [];
@@ -177,7 +180,9 @@ module.exports = function ({ types: t }) {
             return;
           }
 
-          // 2. <Choose>
+          // -----------------------------------------------------------------
+          // 2. <Choose> <When condition={...}> ... </When> <Otherwise> ... </Otherwise> </Choose>
+          // -----------------------------------------------------------------
           if (tagName === 'Choose') {
             const whenBranches = [];
             let otherwiseBranch = null;
@@ -215,7 +220,9 @@ module.exports = function ({ types: t }) {
             return;
           }
 
-          // 3. Standalone <When>
+          // -----------------------------------------------------------------
+          // 3. Standalone <When condition={...}>
+          // -----------------------------------------------------------------
           if (tagName === 'When') {
             const parentTag = getTagName(path.parent);
             if (parentTag === 'Choose') {
@@ -234,7 +241,9 @@ module.exports = function ({ types: t }) {
             return;
           }
 
+          // -----------------------------------------------------------------
           // 4. Standalone <Otherwise> or <Else>
+          // -----------------------------------------------------------------
           if (tagName === 'Otherwise' || tagName === 'Else') {
             const parentTag = getTagName(path.parent);
             if (parentTag === 'Choose' || parentTag === 'If') {
@@ -243,95 +252,6 @@ module.exports = function ({ types: t }) {
 
             const content = childrenToExpression(path.node.children);
             replaceWithExpression(path, content);
-            return;
-          }
-
-          // 5. <For each="item" of={items} index="i">
-          if (tagName === 'For') {
-            let eachParam = t.identifier('item');
-            let ofArray = null;
-            let indexParam = null;
-
-            for (const attr of path.node.openingElement.attributes) {
-              if (t.isJSXAttribute(attr)) {
-                const name = attr.name.name;
-                if (name === 'each') {
-                  if (t.isStringLiteral(attr.value)) {
-                    eachParam = t.identifier(attr.value.value);
-                  } else if (
-                    t.isJSXExpressionContainer(attr.value) &&
-                    t.isIdentifier(attr.value.expression)
-                  ) {
-                    eachParam = attr.value.expression;
-                  }
-                } else if (name === 'of' || name === 'in') {
-                  if (t.isJSXExpressionContainer(attr.value)) {
-                    ofArray = attr.value.expression;
-                  }
-                } else if (name === 'index') {
-                  if (t.isStringLiteral(attr.value)) {
-                    indexParam = t.identifier(attr.value.value);
-                  } else if (
-                    t.isJSXExpressionContainer(attr.value) &&
-                    t.isIdentifier(attr.value.expression)
-                  ) {
-                    indexParam = attr.value.expression;
-                  }
-                }
-              }
-            }
-
-            if (!ofArray) {
-              replaceWithExpression(path, t.nullLiteral());
-              return;
-            }
-
-            const params = [eachParam];
-            if (indexParam) {
-              params.push(indexParam);
-            }
-
-            const body = childrenToExpression(path.node.children);
-            const arrowFunc = t.arrowFunctionExpression(params, body);
-            const mapCall = t.callExpression(
-              t.memberExpression(
-                t.logicalExpression('||', ofArray, t.arrayExpression([])),
-                t.identifier('map')
-              ),
-              [arrowFunc]
-            );
-
-            replaceWithExpression(path, mapCall);
-            return;
-          }
-
-          // 6. <With foo={bar} baz={qux}>
-          if (tagName === 'With') {
-            const params = [];
-            const args = [];
-
-            for (const attr of path.node.openingElement.attributes) {
-              if (t.isJSXAttribute(attr) && t.isJSXIdentifier(attr.name)) {
-                params.push(t.identifier(attr.name.name));
-                if (attr.value === null) {
-                  args.push(t.booleanLiteral(true));
-                } else if (t.isJSXExpressionContainer(attr.value)) {
-                  args.push(attr.value.expression);
-                } else if (t.isStringLiteral(attr.value)) {
-                  args.push(attr.value);
-                } else {
-                  args.push(t.nullLiteral());
-                }
-              }
-            }
-
-            const body = childrenToExpression(path.node.children);
-            const iife = t.callExpression(
-              t.arrowFunctionExpression(params, body),
-              args
-            );
-
-            replaceWithExpression(path, iife);
             return;
           }
         },

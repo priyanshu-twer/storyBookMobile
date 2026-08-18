@@ -22,18 +22,6 @@ declare global {
   const Choose: React.FC<{
     children?: React.ReactNode;
   }>;
-
-  const For: <T>(props: {
-    each?: string;
-    of: Iterable<T> | T[];
-    index?: string;
-    children?: React.ReactNode;
-  }) => React.ReactElement | null;
-
-  const With: React.FC<{
-    [key: string]: any;
-    children?: React.ReactNode;
-  }>;
 }
 
 export {};
