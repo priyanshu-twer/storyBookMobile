@@ -1,16 +1,12 @@
 /**
  * Babel Plugin: JSX Control Flow
- * 
- * Provides compile-time transformation for:
- *   1. <If condition={...}> ... <Else> ... </Else> </If>
- *      and <If condition={...}> ... <Else /> ... </If>
- *   2. <Choose>
- *        <When condition={...}> ... </When>
- *        <Otherwise> ... </Otherwise>
- *      </Choose>
- *   3. Standalone <When condition={...}> ... </When>
- *   4. Standalone <Otherwise> ... </Otherwise>
- *   5. Standalone <Else> ... </Else>
+ * Modernized version of `babel-plugin-jsx-control-statements` for Babel v7 and Babel v8.
+ *
+ * Implements:
+ *   - <If condition={...}> ... <Else /> ... </If>
+ *   - <If condition={...}> ... <Else> ... </Else> </If>
+ *   - <Choose> <When condition={...}> ... </When> <Otherwise> ... </Otherwise> </Choose>
+ *   - Standalone <When condition={...}> ... </When>
  */
 module.exports = function ({ types: t }) {
   /**
@@ -21,6 +17,13 @@ module.exports = function ({ types: t }) {
       return node.openingElement.name.name;
     }
     return null;
+  }
+
+  /**
+   * Helper: Test if a node is a JSX element with a specific tag name.
+   */
+  function isTag(node, tagName) {
+    return t.isJSXElement(node) && getTagName(node) === tagName;
   }
 
   /**
@@ -59,212 +62,124 @@ module.exports = function ({ types: t }) {
   }
 
   /**
-   * Helper: Filter out formatting whitespace newlines while preserving inline spacing.
+   * Helper: Uses Babel's built-in react.buildChildren to correctly normalize
+   * JSX children (handling whitespace, strings, and expression containers).
    */
-  function cleanJSXChildren(children) {
-    return children.filter((child) => {
-      // Filter out comments like {/* some comment */}
-      if (
-        t.isJSXExpressionContainer(child) &&
-        t.isJSXEmptyExpression(child.expression)
-      ) {
-        return false;
-      }
-      // Filter out formatting newlines and indentation
-      if (t.isJSXText(child) && /^\s*[\r\n]+\s*$/.test(child.value)) {
-        return false;
-      }
-      return true;
-    });
+  function getChildren(node) {
+    return t.react.buildChildren(node);
   }
 
   /**
-   * Helper: Ensure any node inside a JSXFragment is a valid JSX child.
+   * Helper: Returns single expression, NullLiteral, or ArrayExpression
+   * (matching original jsx-control-statements getSanitizedExpressionForContent).
    */
-  function ensureJSXChild(child) {
-    if (
-      t.isJSXElement(child) ||
-      t.isJSXFragment(child) ||
-      t.isJSXText(child) ||
-      t.isJSXExpressionContainer(child) ||
-      t.isJSXSpreadChild(child)
-    ) {
-      return child;
-    }
-    return t.jsxExpressionContainer(child);
-  }
-
-  /**
-   * Helper: Convert array of JSX children to a single JS expression.
-   */
-  function childrenToExpression(children) {
-    const cleanChildren = cleanJSXChildren(children);
-
-    if (cleanChildren.length === 0) {
+  function getSanitizedExpressionForContent(blocks) {
+    if (!blocks || !blocks.length) {
       return t.nullLiteral();
     }
-
-    if (cleanChildren.length === 1) {
-      const child = cleanChildren[0];
-
-      if (t.isJSXElement(child) || t.isJSXFragment(child)) {
-        return child;
-      }
-
-      if (t.isJSXExpressionContainer(child)) {
-        if (t.isJSXEmptyExpression(child.expression)) {
-          return t.nullLiteral();
-        }
-        return child.expression;
-      }
-
-      if (t.isJSXText(child)) {
-        return t.stringLiteral(child.value);
-      }
-
-      return child;
+    if (blocks.length === 1) {
+      return blocks[0];
     }
-
-    // Multiple children -> wrap in a JSX Fragment <>{children}</>
-    return t.jsxFragment(
-      t.jsxOpeningFragment(),
-      t.jsxClosingFragment(),
-      cleanChildren.map(ensureJSXChild)
-    );
+    return t.arrayExpression(blocks);
   }
 
   /**
-   * Helper: Replace a JSX node with a JS expression, wrapping in `{ expr }` if inside JSX.
+   * Transforms <If condition={...}> ... <Else> ... </Else> </If>
    */
-  function replaceWithExpression(path, expression) {
-    if (t.isJSXElement(path.parent) || t.isJSXFragment(path.parent)) {
-      path.replaceWith(t.jsxExpressionContainer(expression));
-    } else {
-      path.replaceWith(expression);
+  function transformIf(node) {
+    const children = getChildren(node);
+    const ifBlock = [];
+    const elseBlock = [];
+    let currentBlock = ifBlock;
+
+    children.forEach((child) => {
+      if (isTag(child, 'Else')) {
+        currentBlock = elseBlock;
+        if (child.children && child.children.length > 0) {
+          const nested = getChildren(child);
+          nested.forEach((n) => currentBlock.push(n));
+        }
+      } else {
+        currentBlock.push(child);
+      }
+    });
+
+    const condition = getConditionExpression(node);
+    const consequent = getSanitizedExpressionForContent(ifBlock);
+    const alternate = getSanitizedExpressionForContent(elseBlock);
+
+    return t.conditionalExpression(condition, consequent, alternate);
+  }
+
+  /**
+   * Transforms <Choose> <When condition={...}> ... </When> <Otherwise> ... </Otherwise> </Choose>
+   */
+  function transformChoose(node) {
+    const children = getChildren(node);
+    const whenBlocks = [];
+    let otherwiseBlock = t.nullLiteral();
+
+    children.forEach((child) => {
+      if (isTag(child, 'When')) {
+        const childNodes = getChildren(child);
+        whenBlocks.push({
+          condition: getConditionExpression(child),
+          children: getSanitizedExpressionForContent(childNodes),
+        });
+      } else if (isTag(child, 'Otherwise')) {
+        const childNodes = getChildren(child);
+        otherwiseBlock = getSanitizedExpressionForContent(childNodes);
+      }
+    });
+
+    let result = otherwiseBlock;
+    for (let i = whenBlocks.length - 1; i >= 0; i--) {
+      result = t.conditionalExpression(
+        whenBlocks[i].condition,
+        whenBlocks[i].children,
+        result
+      );
     }
+    return result;
+  }
+
+  /**
+   * Transforms standalone <When condition={...}> ... </When>
+   */
+  function transformWhen(node) {
+    const childNodes = getChildren(node);
+    return t.conditionalExpression(
+      getConditionExpression(node),
+      getSanitizedExpressionForContent(childNodes),
+      t.nullLiteral()
+    );
   }
 
   return {
     name: 'jsx-control-flow',
     visitor: {
-      JSXElement: {
-        exit(path) {
-          const tagName = getTagName(path.node);
+      JSXElement(path) {
+        const name = getTagName(path.node);
+        let replacement = null;
 
-          // -----------------------------------------------------------------
-          // 1. <If condition={...}> ... <Else> ... </Else> </If>
-          //    or <If condition={...}> ... <Else /> ... </If>
-          // -----------------------------------------------------------------
-          if (tagName === 'If') {
-            const condition = getConditionExpression(path.node);
-            const thenChildren = [];
-            const elseChildren = [];
-            let inElse = false;
-
-            for (const child of path.node.children) {
-              if (t.isJSXText(child) && /^\s*[\r\n]+\s*$/.test(child.value)) {
-                continue;
-              }
-
-              if (getTagName(child) === 'Else') {
-                inElse = true;
-                // If <Else> wraps its children: <Else><B /></Else>
-                if (child.children && child.children.length > 0) {
-                  for (const elseChild of child.children) {
-                    elseChildren.push(elseChild);
-                  }
-                }
-              } else if (inElse) {
-                // If <Else /> was used as a separator: <If><A /><Else /><B /></If>
-                elseChildren.push(child);
-              } else {
-                thenChildren.push(child);
-              }
-            }
-
-            const consequent = childrenToExpression(thenChildren);
-            const alternate = childrenToExpression(elseChildren);
-            const ternary = t.conditionalExpression(condition, consequent, alternate);
-
-            replaceWithExpression(path, ternary);
-            return;
+        if (name === 'If') {
+          replacement = transformIf(path.node);
+        } else if (name === 'Choose') {
+          replacement = transformChoose(path.node);
+        } else if (name === 'When') {
+          // Only transform standalone When (when not inside Choose)
+          if (!path.parentPath || getTagName(path.parentPath.node) !== 'Choose') {
+            replacement = transformWhen(path.node);
           }
+        }
 
-          // -----------------------------------------------------------------
-          // 2. <Choose> <When condition={...}> ... </When> <Otherwise> ... </Otherwise> </Choose>
-          // -----------------------------------------------------------------
-          if (tagName === 'Choose') {
-            const whenBranches = [];
-            let otherwiseBranch = null;
-
-            for (const child of path.node.children) {
-              if (t.isJSXText(child) && /^\s*[\r\n]+\s*$/.test(child.value)) {
-                continue;
-              }
-
-              if (t.isJSXElement(child)) {
-                const childTag = getTagName(child);
-
-                if (childTag === 'When') {
-                  const condition = getConditionExpression(child);
-                  const consequent = childrenToExpression(child.children);
-                  whenBranches.push({ condition, consequent });
-                } else if (childTag === 'Otherwise') {
-                  otherwiseBranch = childrenToExpression(child.children);
-                }
-              }
-            }
-
-            let result = otherwiseBranch || t.nullLiteral();
-
-            for (let i = whenBranches.length - 1; i >= 0; i--) {
-              const branch = whenBranches[i];
-              result = t.conditionalExpression(
-                branch.condition,
-                branch.consequent,
-                result
-              );
-            }
-
-            replaceWithExpression(path, result);
-            return;
+        if (replacement) {
+          if (t.isJSXElement(path.parent) || t.isJSXFragment(path.parent)) {
+            path.replaceWith(t.jsxExpressionContainer(replacement));
+          } else {
+            path.replaceWith(replacement);
           }
-
-          // -----------------------------------------------------------------
-          // 3. Standalone <When condition={...}>
-          // -----------------------------------------------------------------
-          if (tagName === 'When') {
-            const parentTag = getTagName(path.parent);
-            if (parentTag === 'Choose') {
-              return;
-            }
-
-            const condition = getConditionExpression(path.node);
-            const consequent = childrenToExpression(path.node.children);
-            const ternary = t.conditionalExpression(
-              condition,
-              consequent,
-              t.nullLiteral()
-            );
-
-            replaceWithExpression(path, ternary);
-            return;
-          }
-
-          // -----------------------------------------------------------------
-          // 4. Standalone <Otherwise> or <Else>
-          // -----------------------------------------------------------------
-          if (tagName === 'Otherwise' || tagName === 'Else') {
-            const parentTag = getTagName(path.parent);
-            if (parentTag === 'Choose' || parentTag === 'If') {
-              return;
-            }
-
-            const content = childrenToExpression(path.node.children);
-            replaceWithExpression(path, content);
-            return;
-          }
-        },
+        }
       },
     },
   };
