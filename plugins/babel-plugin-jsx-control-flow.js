@@ -1,19 +1,22 @@
 /**
  * Babel Plugin: JSX Control Flow
- * 
- * Provides compile-time transformation for:
- *   - <If condition={...}> ... <Else> ... </Else> </If>
- *   - <Choose> <When condition={...}> ... </When> <Otherwise> ... </Otherwise> </Choose>
- *   - Standalone <When condition={...}> ... </When>
- *   - Standalone <Otherwise> ... </Otherwise>
- *   - Standalone <Else> ... </Else>
+ * Exact 1-to-1 equivalent of `jsx-control-statements`
  *
- * Compatible with Babel v7 and Babel v8.
+ * Supported Statements:
+ * 1. <If condition={test}>thenBlock</If>
+ * 2. <If condition={test}>thenBlock<Else>elseBlock</Else></If>
+ * 3. <Choose>
+ *      <When condition={test1}>branch1</When>
+ *      <When condition={test2}>branch2</When>
+ *      <Otherwise>defaultBranch</Otherwise>
+ *    </Choose>
+ * 4. <When condition={test}>branch</When> (Standalone)
+ * 5. <For each="item" of={items} index="i">body</For>
+ * 6. <With foo={bar} baz={qux}>body</With>
  */
 module.exports = function ({ types: t }) {
   /**
-   * Extracts the tag name from a JSXElement if it's a simple identifier.
-   * e.g., <If> -> "If", <Choose> -> "Choose"
+   * Helper: Get element tag name.
    */
   function getTagName(node) {
     if (t.isJSXElement(node) && t.isJSXIdentifier(node.openingElement.name)) {
@@ -23,8 +26,7 @@ module.exports = function ({ types: t }) {
   }
 
   /**
-   * Extracts the condition/test expression from element attributes.
-   * Supports: condition={expr}, test={expr}, is={expr}, or boolean flag attribute <When condition />
+   * Helper: Extract condition expression from attributes (supports condition, test, is, or boolean flag).
    */
   function getConditionExpression(node) {
     const attr = node.openingElement.attributes.find(
@@ -35,17 +37,14 @@ module.exports = function ({ types: t }) {
           a.name.name === 'is')
     );
 
-    // If no attribute found, default to true
     if (!attr) {
       return t.booleanLiteral(true);
     }
 
-    // If attribute is a boolean flag with no value (e.g. <If condition />)
     if (attr.value === null) {
       return t.booleanLiteral(true);
     }
 
-    // If attribute is an expression (e.g. condition={data !== null})
     if (t.isJSXExpressionContainer(attr.value)) {
       if (t.isJSXEmptyExpression(attr.value.expression)) {
         return t.booleanLiteral(true);
@@ -53,7 +52,6 @@ module.exports = function ({ types: t }) {
       return attr.value.expression;
     }
 
-    // If attribute is a string literal (e.g. condition="true")
     if (t.isStringLiteral(attr.value)) {
       return attr.value;
     }
@@ -62,46 +60,49 @@ module.exports = function ({ types: t }) {
   }
 
   /**
-   * Filters out pure indentation/newline whitespace while PRESERVING
-   * inline whitespace (e.g. " " between tags) so text snapshot tests match exactly.
+   * Helper: Filter out formatting whitespace newlines while preserving inline spacing.
    */
   function cleanJSXChildren(children) {
     return children.filter((child) => {
-      // Filter out comments like {/* some comment */}
       if (
         t.isJSXExpressionContainer(child) &&
         t.isJSXEmptyExpression(child.expression)
       ) {
         return false;
       }
-
-      // Filter out only formatting whitespace (newlines and indentation)
-      if (t.isJSXText(child)) {
-        // If it contains a newline and only whitespace, it is just formatting indentation
-        if (/^\s*[\r\n]+\s*$/.test(child.value)) {
-          return false;
-        }
+      if (t.isJSXText(child) && /^\s*[\r\n]+\s*$/.test(child.value)) {
+        return false;
       }
-
       return true;
     });
   }
 
   /**
-   * Converts an array of JSX children into a valid single JavaScript expression.
-   * - 0 children -> null
-   * - 1 child -> single element / expression / string
-   * - >1 children -> wrapped in a JSX Fragment <>{...}</>
+   * Helper: Ensure any node inside a JSXFragment is a valid JSX child.
+   */
+  function ensureJSXChild(child) {
+    if (
+      t.isJSXElement(child) ||
+      t.isJSXFragment(child) ||
+      t.isJSXText(child) ||
+      t.isJSXExpressionContainer(child) ||
+      t.isJSXSpreadChild(child)
+    ) {
+      return child;
+    }
+    return t.jsxExpressionContainer(child);
+  }
+
+  /**
+   * Helper: Convert array of JSX children to a single JS expression.
    */
   function childrenToExpression(children) {
     const cleanChildren = cleanJSXChildren(children);
 
-    // Empty branch -> null
     if (cleanChildren.length === 0) {
       return t.nullLiteral();
     }
 
-    // Single child -> return directly without extra fragment wrapper
     if (cleanChildren.length === 1) {
       const child = cleanChildren[0];
 
@@ -119,20 +120,19 @@ module.exports = function ({ types: t }) {
       if (t.isJSXText(child)) {
         return t.stringLiteral(child.value);
       }
+
+      return child;
     }
 
-    // Multiple children -> wrap in a JSX Fragment <>{children}</>
     return t.jsxFragment(
       t.jsxOpeningFragment(),
       t.jsxClosingFragment(),
-      cleanChildren
+      cleanChildren.map(ensureJSXChild)
     );
   }
 
   /**
-   * Replaces a JSXElement AST node with a JavaScript expression.
-   * If the parent node is a JSX element or JSX fragment, the expression
-   * must be wrapped in a JSXExpressionContainer: { expression }
+   * Helper: Replace a JSX node with a JS expression, wrapping in `{ expr }` if inside JSX.
    */
   function replaceWithExpression(path, expression) {
     if (t.isJSXElement(path.parent) || t.isJSXFragment(path.parent)) {
@@ -145,29 +145,21 @@ module.exports = function ({ types: t }) {
   return {
     name: 'jsx-control-flow',
     visitor: {
-      /**
-       * Using exit visitor ensures all child elements are processed bottom-up,
-       * allowing arbitrary nesting of <If>, <Choose>, <When>, etc.
-       */
       JSXElement: {
         exit(path) {
           const tagName = getTagName(path.node);
 
-          // -----------------------------------------------------------------
-          // 1. Handle <If> statements
-          // -----------------------------------------------------------------
+          // 1. <If>
           if (tagName === 'If') {
             const condition = getConditionExpression(path.node);
             const thenChildren = [];
             const elseChildren = [];
 
             for (const child of path.node.children) {
-              // Ignore newline indentation between child tags
               if (t.isJSXText(child) && /^\s*[\r\n]+\s*$/.test(child.value)) {
                 continue;
               }
 
-              // Collect children inside <Else>...</Else>
               if (getTagName(child) === 'Else') {
                 for (const elseChild of child.children) {
                   elseChildren.push(elseChild);
@@ -185,15 +177,12 @@ module.exports = function ({ types: t }) {
             return;
           }
 
-          // -----------------------------------------------------------------
-          // 2. Handle <Choose> statements
-          // -----------------------------------------------------------------
+          // 2. <Choose>
           if (tagName === 'Choose') {
             const whenBranches = [];
             let otherwiseBranch = null;
 
             for (const child of path.node.children) {
-              // Ignore newline indentation between child tags
               if (t.isJSXText(child) && /^\s*[\r\n]+\s*$/.test(child.value)) {
                 continue;
               }
@@ -211,10 +200,8 @@ module.exports = function ({ types: t }) {
               }
             }
 
-            // Default fallback if no When matches and no Otherwise is provided
             let result = otherwiseBranch || t.nullLiteral();
 
-            // Build chained ternary from right to left: cond1 ? res1 : cond2 ? res2 : fallback
             for (let i = whenBranches.length - 1; i >= 0; i--) {
               const branch = whenBranches[i];
               result = t.conditionalExpression(
@@ -228,12 +215,9 @@ module.exports = function ({ types: t }) {
             return;
           }
 
-          // -----------------------------------------------------------------
-          // 3. Handle Standalone <When> statements (outside of <Choose>)
-          // -----------------------------------------------------------------
+          // 3. Standalone <When>
           if (tagName === 'When') {
             const parentTag = getTagName(path.parent);
-            // If inside a <Choose>, the Choose visitor handles it
             if (parentTag === 'Choose') {
               return;
             }
@@ -250,18 +234,104 @@ module.exports = function ({ types: t }) {
             return;
           }
 
-          // -----------------------------------------------------------------
-          // 4. Handle Standalone <Otherwise> or <Else> (outside parent)
-          // -----------------------------------------------------------------
+          // 4. Standalone <Otherwise> or <Else>
           if (tagName === 'Otherwise' || tagName === 'Else') {
             const parentTag = getTagName(path.parent);
-            // If inside <Choose> or <If>, parent handles it
             if (parentTag === 'Choose' || parentTag === 'If') {
               return;
             }
 
             const content = childrenToExpression(path.node.children);
             replaceWithExpression(path, content);
+            return;
+          }
+
+          // 5. <For each="item" of={items} index="i">
+          if (tagName === 'For') {
+            let eachParam = t.identifier('item');
+            let ofArray = null;
+            let indexParam = null;
+
+            for (const attr of path.node.openingElement.attributes) {
+              if (t.isJSXAttribute(attr)) {
+                const name = attr.name.name;
+                if (name === 'each') {
+                  if (t.isStringLiteral(attr.value)) {
+                    eachParam = t.identifier(attr.value.value);
+                  } else if (
+                    t.isJSXExpressionContainer(attr.value) &&
+                    t.isIdentifier(attr.value.expression)
+                  ) {
+                    eachParam = attr.value.expression;
+                  }
+                } else if (name === 'of' || name === 'in') {
+                  if (t.isJSXExpressionContainer(attr.value)) {
+                    ofArray = attr.value.expression;
+                  }
+                } else if (name === 'index') {
+                  if (t.isStringLiteral(attr.value)) {
+                    indexParam = t.identifier(attr.value.value);
+                  } else if (
+                    t.isJSXExpressionContainer(attr.value) &&
+                    t.isIdentifier(attr.value.expression)
+                  ) {
+                    indexParam = attr.value.expression;
+                  }
+                }
+              }
+            }
+
+            if (!ofArray) {
+              replaceWithExpression(path, t.nullLiteral());
+              return;
+            }
+
+            const params = [eachParam];
+            if (indexParam) {
+              params.push(indexParam);
+            }
+
+            const body = childrenToExpression(path.node.children);
+            const arrowFunc = t.arrowFunctionExpression(params, body);
+            const mapCall = t.callExpression(
+              t.memberExpression(
+                t.logicalExpression('||', ofArray, t.arrayExpression([])),
+                t.identifier('map')
+              ),
+              [arrowFunc]
+            );
+
+            replaceWithExpression(path, mapCall);
+            return;
+          }
+
+          // 6. <With foo={bar} baz={qux}>
+          if (tagName === 'With') {
+            const params = [];
+            const args = [];
+
+            for (const attr of path.node.openingElement.attributes) {
+              if (t.isJSXAttribute(attr) && t.isJSXIdentifier(attr.name)) {
+                params.push(t.identifier(attr.name.name));
+                if (attr.value === null) {
+                  args.push(t.booleanLiteral(true));
+                } else if (t.isJSXExpressionContainer(attr.value)) {
+                  args.push(attr.value.expression);
+                } else if (t.isStringLiteral(attr.value)) {
+                  args.push(attr.value);
+                } else {
+                  args.push(t.nullLiteral());
+                }
+              }
+            }
+
+            const body = childrenToExpression(path.node.children);
+            const iife = t.callExpression(
+              t.arrowFunctionExpression(params, body),
+              args
+            );
+
+            replaceWithExpression(path, iife);
             return;
           }
         },
