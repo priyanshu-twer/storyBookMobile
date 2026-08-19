@@ -1,15 +1,15 @@
 /**
  * Babel Plugin: jsx-control-flow
- *
+ * 
  * Transforms declarative JSX control flow tags (<If>, <Choose>, <When>, <Otherwise>)
  * into standard JavaScript ternary expressions at compile time.
- *
+ * 
  * Example:
  *   <If condition={isLoggedIn}> <User /> </If>
  * becomes:
  *   isLoggedIn ? <User /> : null
  */
-module.exports = function ({ types: t }) {
+module.exports = function jsxControlFlowPlugin({ types: t }) {
   // Pre-compiled regex to filter out formatting-only whitespace and newlines
   const FORMATTING_WHITESPACE_REGEX = /^\s*[\r\n]+\s*$/;
 
@@ -77,12 +77,17 @@ module.exports = function ({ types: t }) {
    * Converts a single JSX child node into an AST expression.
    */
   function childToExpression(child) {
+    // 1. If child is inside curly braces {value} -> unwrap the inner expression
     if (t.isJSXExpressionContainer(child)) {
       return child.expression;
     }
+
+    // 2. If child is plain text "Hello" -> convert into a JavaScript string literal
     if (t.isJSXText(child)) {
       return t.stringLiteral(child.value);
     }
+
+    // 3. If child is a JSX tag <View /> or Fragment <>...</> -> return it directly
     return child;
   }
 
@@ -103,10 +108,12 @@ module.exports = function ({ types: t }) {
       return t.nullLiteral();
     }
 
+    // 1 child -> return it directly (e.g. <If condition={ok}><Text>A</Text></If> -> <Text>A</Text>)
     if (cleanChildren.length === 1) {
       return childToExpression(cleanChildren[0]);
     }
 
+    // 2+ children -> wrap in an array (e.g. <If condition={ok}><Text>A</Text><Text>B</Text></If> -> [<Text>A</Text>, <Text>B</Text>])
     return t.arrayExpression(cleanChildren.map(childToExpression));
   }
 
@@ -115,11 +122,6 @@ module.exports = function ({ types: t }) {
     visitor: {
       JSXElement(path) {
         const tagName = getTagName(path.node);
-
-        // Fast-path: Ignore all non-control-flow tags
-        if (tagName !== 'If' && tagName !== 'Choose' && tagName !== 'When') {
-          return;
-        }
 
         // =========================================================================
         // 1. Transform <If condition={...}>...</If>
@@ -135,50 +137,54 @@ module.exports = function ({ types: t }) {
           );
 
           path.replaceWith(ternary);
-          return;
-        }
-
-        // =========================================================================
-        // 2. Transform <Choose> <When condition={...}>...</When> <Otherwise>...</Otherwise> </Choose>
-        //    Output: cond1 ? res1 : (cond2 ? res2 : otherwise)
-        // =========================================================================
-        if (tagName === 'Choose') {
+        } else if (tagName === 'Choose') {
+          // =========================================================================
+          // 2. Transform <Choose> <When condition={...}>...</When> <Otherwise>...</Otherwise> </Choose>
+          //    Output: cond1 ? res1 : (cond2 ? res2 : otherwise)
+          // =========================================================================
           const whenBranches = [];
           let otherwiseBranch = null;
 
-          // Parse children to extract <When> branches and fallback <Otherwise>
-          for (const child of path.node.children) {
+          // 1. Loop through all children inside <Choose> to collect <When> and <Otherwise> tags
+          path.node.children.forEach(child => {
+            // Skip empty whitespace lines or non-JSX nodes
             if (isIgnorableWhitespace(child) || !t.isJSXElement(child)) {
-              continue;
+              return;
             }
 
             const childTag = getTagName(child);
+
+            // If it's <When condition={...}> -> extract its condition and its children
             if (childTag === 'When') {
               whenBranches.push({
                 condition: getConditionExpression(child),
                 consequent: childrenToExpression(child.children),
               });
-            } else if (childTag === 'Otherwise') {
+            }
+            // If it's <Otherwise> -> extract its fallback children
+            else if (childTag === 'Otherwise') {
               otherwiseBranch = childrenToExpression(child.children);
             }
-          }
+          });
 
-          // Build nested ternary chain from right-to-left
-          let result = otherwiseBranch || t.nullLiteral();
-          for (let i = whenBranches.length - 1; i >= 0; i--) {
-            const { condition, consequent } = whenBranches[i];
-            result = t.conditionalExpression(condition, consequent, result);
-          }
+          // 2. Base case: Use the <Otherwise> fallback, or default to `null` if omitted
+          const initialFallback = otherwiseBranch || t.nullLiteral();
 
+          // 3. Build nested ternary chain from right-to-left (bottom to top):
+          //    when1 ? res1 : (when2 ? res2 : fallback)
+          const result = whenBranches.reduceRight(
+            (acc, { condition, consequent }) =>
+              t.conditionalExpression(condition, consequent, acc),
+            initialFallback,
+          );
+
+          // 4. Replace the <Choose> tag with the nested ternary chain
           path.replaceWith(result);
-          return;
-        }
-
-        // =========================================================================
-        // 3. Transform standalone <When condition={...}>...</When> (outside <Choose>)
-        //    Output: condition ? consequent : null
-        // =========================================================================
-        if (tagName === 'When') {
+        } else if (tagName === 'When') {
+          // =========================================================================
+          // 3. Transform standalone <When condition={...}>...</When> (outside <Choose>)
+          //    Output: condition ? consequent : null
+          // =========================================================================
           // Transform only if not directly nested inside <Choose>
           if (!path.parentPath || !isTag(path.parentPath.node, 'Choose')) {
             const condition = getConditionExpression(path.node);
@@ -190,7 +196,6 @@ module.exports = function ({ types: t }) {
             );
 
             path.replaceWith(ternary);
-            return;
           }
         }
       },
