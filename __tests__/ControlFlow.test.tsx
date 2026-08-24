@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Image } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
+import { Choose, When, Otherwise, If } from '../components/ControlFlow';
 
 // 1. StatusTracker component
 const StatusTrackerStep = ({ title, subTitle, status, isLast }) => (
@@ -22,9 +23,6 @@ const StatusTrackerStep = ({ title, subTitle, status, isLast }) => (
       </If>
       <If condition={subTitle}>
         <Text>{subTitle}</Text>
-        <Else>
-          <Text>No Subtitle</Text>
-        </Else>
       </If>
     </View>
   </View>

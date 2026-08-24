@@ -6,7 +6,8 @@ import { Otherwise } from './Otherwise';
 /**
  * Choose component that renders the first matching <When> child whose condition is true.
  * If no <When> condition matches, it renders the <Otherwise> child (if present).
- * Supports direct JSX as well as lazy render functions: () => <JSX />
+ * Supports:
+ * - <Choose><When condition={...}>JSX</When><Otherwise>JSX</Otherwise></Choose>
  */
 export const Choose = React.memo(({ children }) => {
   if (!children) return null;
@@ -21,8 +22,8 @@ export const Choose = React.memo(({ children }) => {
     return false;
   });
 
-  if (match) {
-    return <>{match}</>;
+  if (match && React.isValidElement(match)) {
+    return <>{match.props.children}</>;
   }
 
   // If no When matched, find the Otherwise component
@@ -30,7 +31,11 @@ export const Choose = React.memo(({ children }) => {
     (child) => React.isValidElement(child) && (child.type === Otherwise || child.type?.displayName === 'Otherwise')
   );
 
-  return otherwise ? <>{otherwise}</> : null;
+  if (otherwise && React.isValidElement(otherwise)) {
+    return <>{otherwise.props.children}</>;
+  }
+
+  return null;
 });
 
 Choose.displayName = 'Choose';
@@ -38,4 +43,3 @@ Choose.displayName = 'Choose';
 Choose.propTypes = {
   children: PropTypes.node,
 };
-
