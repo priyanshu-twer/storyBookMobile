@@ -1,12 +1,25 @@
 /**
  * Custom Babel Plugin: add-data-components-attribute
- * Automatically injects `data-component="<ComponentName>"` into the root JSX
- * element returned by React components. Compatible with Babel v7 and v8.
+ * Exact drop-in modern replacement for `lemonmade/babel-plugin-react-component-data-attribute`.
+ * Dual compatible with Babel v7 and Babel v8.
+ *
+ * Adds `data-component="<ComponentName>"` ONLY to top-level builtin DOM elements
+ * (like <svg>, <div>, <span>, <button>) returned by React components.
  */
 
-module.exports = function addDataComponentPlugin(babel) {
-  const { types: t } = babel;
-  const ATTRIBUTE_NAME = 'data-component';
+const { extname, basename, dirname } = require('path');
+
+const BUILTIN_COMPONENT_REGEX = /^[a-z]+[a-z0-9-]*$/;
+const DATA_ATTRIBUTE = 'data-component';
+
+module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
+  // Support both Babel 7 (jsxAttribute) and Babel 8 types
+  const jsxAttr = t.jsxAttribute || t.jSXAttribute;
+  const jsxId = t.jsxIdentifier || t.jSXIdentifier;
+
+  function createAttribute(name) {
+    return jsxAttr.call(t, jsxId.call(t, DATA_ATTRIBUTE), t.stringLiteral(name));
+  }
 
   function isTestOrMockFile(filename) {
     if (!filename) return false;
@@ -17,6 +30,31 @@ module.exports = function addDataComponentPlugin(babel) {
     );
   }
 
+  function fileDetails(filename) {
+    if (!filename || filename === 'unknown') return null;
+    return {
+      directory: basename(dirname(filename)),
+      name: basename(filename, extname(filename)),
+    };
+  }
+
+  function resolveComponentName(path, file) {
+    const { parentPath, node } = path;
+
+    if (node.id && t.isIdentifier(node.id)) {
+      return node.id.name;
+    }
+
+    if (parentPath && parentPath.isVariableDeclarator() && parentPath.node.id) {
+      return parentPath.node.id.name;
+    }
+
+    const details = fileDetails(file && file.opts ? file.opts.filename : null);
+    if (!details) return null;
+
+    return details.name === 'index' ? details.directory : details.name;
+  }
+
   function isMockComponent(name) {
     return (
       typeof name === 'string' &&
@@ -24,165 +62,92 @@ module.exports = function addDataComponentPlugin(babel) {
     );
   }
 
-  function hasDataComponentAttribute(openingElement) {
-    return openingElement.attributes.some(
-      (attr) =>
-        t.isJSXAttribute(attr) && attr.name && attr.name.name === ATTRIBUTE_NAME
-    );
-  }
+  const returnStatementVisitor = {
+    JSXElement(path, { name, source }) {
+      if (path.getFunctionParent() !== source) return;
 
-  function isFragment(openingElement) {
-    if (!openingElement || !openingElement.name) return false;
-    const name = openingElement.name;
-    if (t.isJSXIdentifier(name)) {
-      return name.name === 'Fragment' || name.name === 'ReactFragment';
-    }
-    if (t.isJSXMemberExpression(name)) {
-      return (
-        t.isJSXIdentifier(name.object) &&
-        name.object.name === 'React' &&
-        t.isJSXIdentifier(name.property) &&
-        name.property.name === 'Fragment'
+      const openingElement = path.get('openingElement');
+      const { node } = openingElement;
+
+      // CRITICAL: Only inject on builtin DOM/HTML/SVG tags (lowercase: div, span, svg, etc.)
+      // Custom React components (<Svg />, <Icon />, etc.) are NEVER injected.
+      if (!t.isJSXIdentifier(node.name) || !BUILTIN_COMPONENT_REGEX.test(node.name.name)) {
+        return;
+      }
+
+      // Do not traverse into child JSX elements; only process the top-level element
+      path.skip();
+
+      if (path.parentPath.isJSXExpressionContainer()) return;
+
+      const hasAttribute = node.attributes.some(
+        (attr) =>
+          t.isJSXAttribute(attr) &&
+          attr.name &&
+          attr.name.name === DATA_ATTRIBUTE
       );
-    }
-    return false;
-  }
+      if (hasAttribute) return;
 
-  function resolveComponentName(path, state) {
-    let name = null;
-    const varDeclarator = path.findParent((p) => p.isVariableDeclarator());
-    if (varDeclarator && varDeclarator.node.id && varDeclarator.node.id.name) {
-      name = varDeclarator.node.id.name;
-    }
-    if (!name && path.node.id && path.node.id.name) {
-      name = path.node.id.name;
-    }
-    if (!name && state && state.filename) {
-      const parts = state.filename.split(/[\\/]/);
-      const fileName = parts[parts.length - 1];
-      name = fileName.replace(/\.[^/.]+$/, '');
-      if (name === 'index' && parts.length > 1) {
-        name = parts[parts.length - 2];
+      node.attributes.push(createAttribute(name));
+    },
+  };
+
+  const functionVisitor = {
+    ReturnStatement(path, { name, source }) {
+      const arg = path.get('argument');
+      if (arg.isIdentifier()) {
+        const binding = path.scope.getBinding(arg.node.name);
+        if (binding) {
+          binding.path.traverse(returnStatementVisitor, { name, source });
+        }
+      } else {
+        path.traverse(returnStatementVisitor, { name, source });
       }
-    }
-    return name || null;
-  }
+    },
+  };
 
-  function isPascalCase(name) {
-    return typeof name === 'string' && /^[A-Z]/.test(name);
-  }
+  function processComponent(path, state) {
+    const name = resolveComponentName(path, state.file);
+    if (!name || isMockComponent(name)) return;
 
-  function injectAttribute(openingElement, componentName) {
-    if (!openingElement || !openingElement.attributes) return;
-    if (hasDataComponentAttribute(openingElement) || isFragment(openingElement)) return;
-
-    // Unshift ensures data-component comes before {...props} so props can override it
-    openingElement.attributes.unshift(
-      t.jsxAttribute(
-        t.jsxIdentifier(ATTRIBUTE_NAME),
-        t.stringLiteral(componentName)
-      )
-    );
-  }
-
-  function injectIntoJSX(jsxPath, componentName) {
-    if (!jsxPath) return;
-
-    if (jsxPath.isJSXElement()) {
-      injectAttribute(jsxPath.node.openingElement, componentName);
-    } else if (jsxPath.isJSXFragment()) {
-      const children = jsxPath.get('children');
-      if (Array.isArray(children)) {
-        children.forEach((child) => {
-          if (child.isJSXElement()) {
-            injectAttribute(child.node.openingElement, componentName);
-          }
-        });
-      }
+    if (path.isArrowFunctionExpression() && !path.get('body').isBlockStatement()) {
+      path.traverse(returnStatementVisitor, { name, source: path });
+    } else {
+      path.traverse(functionVisitor, { name, source: path });
     }
   }
 
   return {
-    name: 'babel-plugin-add-data-component',
+    name: 'babel-plugin-add-data-components-attribute',
     visitor: {
-      Program(programPath, state) {
-        // Skip test files, mock files, and node_modules
-        if (state.filename && isTestOrMockFile(state.filename)) {
+      Program(path, state) {
+        const filename = state.file && state.file.opts ? state.file.opts.filename : null;
+        if (filename && isTestOrMockFile(filename)) {
           return;
         }
 
-        programPath.traverse({
-          'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression'(fnPath) {
-            const componentName = resolveComponentName(fnPath, state);
-            if (
-              !componentName ||
-              !isPascalCase(componentName) ||
-              componentName === 'Fragment' ||
-              isMockComponent(componentName)
-            ) {
-              return;
-            }
+        path.traverse({
+          ClassDeclaration(classPath) {
+            const name = resolveComponentName(classPath, state.file);
+            if (!name || isMockComponent(name)) return;
 
-            // Arrow function with concise body: () => <View />
-            if (fnPath.isArrowFunctionExpression() && fnPath.get('body').isJSXElement()) {
-              injectIntoJSX(fnPath.get('body'), componentName);
-              return;
-            }
-
-            // Functions with return statements
-            fnPath.traverse({
-              ReturnStatement(returnPath) {
-                const parentFn = returnPath.getFunctionParent();
-                if (parentFn !== fnPath) return;
-
-                const arg = returnPath.get('argument');
-                if (arg.isJSXElement() || arg.isJSXFragment()) {
-                  injectIntoJSX(arg, componentName);
-                } else if (arg.isConditionalExpression()) {
-                  const consequent = arg.get('consequent');
-                  const alternate = arg.get('alternate');
-                  if (consequent.isJSXElement() || consequent.isJSXFragment()) {
-                    injectIntoJSX(consequent, componentName);
-                  }
-                  if (alternate.isJSXElement() || alternate.isJSXFragment()) {
-                    injectIntoJSX(alternate, componentName);
-                  }
-                } else if (arg.isLogicalExpression()) {
-                  const right = arg.get('right');
-                  if (right.isJSXElement() || right.isJSXFragment()) {
-                    injectIntoJSX(right, componentName);
-                  }
-                }
-              },
+            classPath.get('body.body').forEach((bodyPath) => {
+              if (
+                bodyPath.isClassMethod() &&
+                t.isIdentifier(bodyPath.node.key, { name: 'render' })
+              ) {
+                bodyPath.traverse(functionVisitor, { name, source: bodyPath });
+              }
             });
           },
 
-          ClassMethod(methodPath) {
-            if (methodPath.node.key && methodPath.node.key.name === 'render') {
-              const classPath = methodPath.findParent((p) => p.isClassDeclaration() || p.isClassExpression());
-              const componentName = classPath ? resolveComponentName(classPath, state) : null;
-
-              if (
-                !componentName ||
-                !isPascalCase(componentName) ||
-                componentName === 'Fragment' ||
-                isMockComponent(componentName)
-              ) {
-                return;
-              }
-
-              methodPath.traverse({
-                ReturnStatement(returnPath) {
-                  const parentFn = returnPath.getFunctionParent();
-                  if (parentFn !== methodPath) return;
-
-                  const arg = returnPath.get('argument');
-                  if (arg.isJSXElement() || arg.isJSXFragment()) {
-                    injectIntoJSX(arg, componentName);
-                  }
-                },
-              });
+          'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression'(fnPath) {
+            // Ignore nested non-component functions
+            const parentFn = fnPath.getFunctionParent();
+            if (parentFn && !parentFn.isProgram()) {
+              return;
             }
+            processComponent(fnPath, state);
           },
         });
       },
