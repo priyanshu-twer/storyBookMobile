@@ -13,135 +13,83 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
   const jsxAttr = t.jsxAttribute || t.jSXAttribute;
   const jsxId = t.jsxIdentifier || t.jSXIdentifier;
 
-  function createAttribute(name) {
-    return jsxAttr.call(
-      t,
-      jsxId.call(t, DATA_ATTRIBUTE),
-      t.stringLiteral(name),
-    );
-  }
+  const createAttribute = (name) =>
+    jsxAttr.call(t, jsxId.call(t, DATA_ATTRIBUTE), t.stringLiteral(name));
 
-  function isTestOrMockFile(filename) {
-    if (!filename) return false;
-    return (
-      /\.(test|spec)\.[jt]sx?$/.test(filename) ||
-      /[\/\\](__tests__|__mocks__|mocks)[\/\\]/.test(filename) ||
-      /[\/\\]node_modules[\/\\]/.test(filename)
-    );
-  }
+  const isTestOrMock = (f) =>
+    !f ||
+    /\.(test|spec)\.[jt]sx?$/.test(f) ||
+    /[\/\\](__tests__|__mocks__|mocks|node_modules)[\/\\]/.test(f);
 
-  function fileDetails(filename) {
-    if (!filename || filename === 'unknown') return null;
+  const fileDetails = (f) => {
+    if (!f || f === 'unknown') return null;
     return {
-      directory: basename(dirname(filename)),
-      name: basename(filename, extname(filename)),
+      directory: basename(dirname(f)),
+      name: basename(f, extname(f)),
     };
-  }
+  };
 
   function isExported(path, name) {
     if (!path || !path.parentPath) return false;
-    if (
-      path.parentPath.isExportDefaultDeclaration() ||
-      path.parentPath.isExportNamedDeclaration()
-    ) {
+    if (path.parentPath.isExportDefaultDeclaration() || path.parentPath.isExportNamedDeclaration()) {
       return true;
     }
-
     if (!name || !path.scope) return false;
     const binding = path.scope.getBinding(name);
     return binding
-      ? binding.referencePaths.some(refPath =>
-          refPath
-            .getAncestry()
-            .some(
-              ancestor =>
-                ancestor.isExportDefaultDeclaration() ||
-                ancestor.isExportSpecifier() ||
-                ancestor.isExportNamedDeclaration(),
-            ),
+      ? binding.referencePaths.some((ref) =>
+          ref.getAncestry().some((a) =>
+            a.isExportDefaultDeclaration() || a.isExportSpecifier() || a.isExportNamedDeclaration()
+          )
         )
       : false;
   }
 
   function resolveComponentName(path, file) {
     const { parentPath, node } = path;
-    if (node && node.id && t.isIdentifier(node.id)) {
-      return node.id.name;
+    if (node?.id && t.isIdentifier(node.id)) return node.id.name;
+    if (parentPath?.isVariableDeclarator() && parentPath.node.id) return parentPath.node.id.name;
+    if (parentPath?.isCallExpression() && parentPath.parentPath?.isVariableDeclarator()) {
+      return parentPath.parentPath.node.id.name;
     }
-    if (parentPath && parentPath.isVariableDeclarator() && parentPath.node.id) {
-      return parentPath.node.id.name;
-    }
-    const details = fileDetails(file && file.opts ? file.opts.filename : null);
+    const details = fileDetails(file?.opts?.filename);
     if (!details) return null;
     return details.name === 'index' ? details.directory : details.name;
   }
 
   function shouldProcessComponent(path, name, state) {
     if (!name || name === 'Fragment') return false;
-
-    // Filter mock components (MockDivComponent, SVGIconMock, etc.)
-    if (
-      /^Mock/i.test(name) ||
-      /Mock$/i.test(name) ||
-      /^Stub/i.test(name) ||
-      name === 'SVGIcon'
-    ) {
-      return false;
-    }
-
-    // Must be an exported component
-    if (!isExported(path, name)) {
-      return false;
-    }
+    if (/^(Mock|Stub)/i.test(name) || /Mock$/i.test(name) || name === 'SVGIcon') return false;
+    if (!isExported(path, name)) return false;
 
     const opts = state.opts || {};
-    const onlyRoot =
-      opts.onlyRootComponents !== undefined ? opts.onlyRootComponents : true;
-
+    const onlyRoot = opts.onlyRootComponents !== undefined ? opts.onlyRootComponents : true;
     if (onlyRoot) {
-      const details = fileDetails(
-        state.file && state.file.opts ? state.file.opts.filename : null,
-      );
-      if (!details) return false;
-      const isRootFile =
-        details.name === 'index' ||
-        details.name.toLowerCase() === details.directory.toLowerCase();
-      if (!isRootFile) return false;
+      const d = fileDetails(state.file?.opts?.filename);
+      if (!d || (d.name !== 'index' && d.name.toLowerCase() !== d.directory.toLowerCase())) {
+        return false;
+      }
     }
-
     return true;
   }
 
   const returnStatementVisitor = {
     JSXElement(path, { name, source }) {
       if (path.getFunctionParent() !== source) return;
+      const { node } = path.get('openingElement');
 
-      const openingElement = path.get('openingElement');
-      const { node } = openingElement;
-
-      // Only inject on lowercase builtin DOM/SVG tags (div, svg, span, button, input)
-      if (
-        !t.isJSXIdentifier(node.name) ||
-        !BUILTIN_COMPONENT_REGEX.test(node.name.name)
-      ) {
+      // Only inject on lowercase DOM/SVG tags (input, div, svg, span, button)
+      if (!t.isJSXIdentifier(node.name) || !BUILTIN_COMPONENT_REGEX.test(node.name.name)) {
         path.skip();
         return;
       }
-
-      // Stop traversing further down once root builtin element is found
       path.skip();
-
       if (path.parentPath.isJSXExpressionContainer()) return;
 
-      const hasAttribute = node.attributes.some(
-        attr =>
-          t.isJSXAttribute(attr) &&
-          attr.name &&
-          attr.name.name === DATA_ATTRIBUTE,
+      const exists = node.attributes.some(
+        (a) => t.isJSXAttribute(a) && a.name?.name === DATA_ATTRIBUTE
       );
-      if (hasAttribute) return;
-
-      node.attributes.push(createAttribute(name));
+      if (!exists) node.attributes.push(createAttribute(name));
     },
   };
 
@@ -150,9 +98,7 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
       const arg = path.get('argument');
       if (arg.isIdentifier()) {
         const binding = path.scope.getBinding(arg.node.name);
-        if (binding) {
-          binding.path.traverse(returnStatementVisitor, { name, source });
-        }
+        binding?.path.traverse(returnStatementVisitor, { name, source });
       } else {
         path.traverse(returnStatementVisitor, { name, source });
       }
@@ -162,11 +108,7 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
   function processComponent(path, state) {
     const name = resolveComponentName(path, state.file);
     if (!shouldProcessComponent(path, name, state)) return;
-
-    if (
-      path.isArrowFunctionExpression() &&
-      !path.get('body').isBlockStatement()
-    ) {
+    if (path.isArrowFunctionExpression() && !path.get('body').isBlockStatement()) {
       path.traverse(returnStatementVisitor, { name, source: path });
     } else {
       path.traverse(functionVisitor, { name, source: path });
@@ -177,34 +119,22 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
     name: 'babel-plugin-add-data-components-attribute',
     visitor: {
       Program(path, state) {
-        const filename =
-          state.file && state.file.opts ? state.file.opts.filename : null;
-        if (filename && isTestOrMockFile(filename)) {
-          return;
-        }
+        const filename = state.file?.opts?.filename;
+        if (filename && isTestOrMock(filename)) return;
 
         path.traverse({
           ClassDeclaration(classPath) {
             const name = resolveComponentName(classPath, state.file);
             if (!shouldProcessComponent(classPath, name, state)) return;
-
-            classPath.get('body.body').forEach(bodyPath => {
-              if (
-                bodyPath.isClassMethod() &&
-                t.isIdentifier(bodyPath.node.key, { name: 'render' })
-              ) {
-                bodyPath.traverse(functionVisitor, { name, source: bodyPath });
+            classPath.get('body.body').forEach((b) => {
+              if (b.isClassMethod() && t.isIdentifier(b.node.key, { name: 'render' })) {
+                b.traverse(functionVisitor, { name, source: b });
               }
             });
           },
-
-          'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression'(
-            fnPath,
-          ) {
+          'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression'(fnPath) {
             const parentFn = fnPath.getFunctionParent();
-            if (parentFn && !parentFn.isProgram()) {
-              return;
-            }
+            if (parentFn && !parentFn.isProgram()) return;
             processComponent(fnPath, state);
           },
         });
