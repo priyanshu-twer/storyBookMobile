@@ -56,7 +56,7 @@ const resSVGIcon = babel.transformSync(svgIconSource, {
   configFile: false,
   babelrc: false,
   presets: ['module:@react-native/babel-preset'],
-  plugins: [plugin],
+  plugins: [[plugin, { onlyRootComponents: true }]],
 });
 
 const svgIconNoData = !resSVGIcon.code.includes('data-component');
