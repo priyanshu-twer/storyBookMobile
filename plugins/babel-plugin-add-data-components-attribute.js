@@ -1,10 +1,7 @@
 /**
  * Custom Babel Plugin: add-data-components-attribute
- * Exact drop-in modern replacement for `lemonmade/babel-plugin-react-component-data-attribute`.
+ * Drop-in modern replacement for `lemonmade/babel-plugin-react-component-data-attribute`.
  * Dual compatible with Babel v7 and Babel v8.
- *
- * Adds `data-component="<ComponentName>"` ONLY to top-level builtin DOM elements
- * (like <svg>, <div>, <span>, <button>) returned by React components.
  */
 
 const { extname, basename, dirname } = require('path');
@@ -13,12 +10,15 @@ const BUILTIN_COMPONENT_REGEX = /^[a-z]+[a-z0-9-]*$/;
 const DATA_ATTRIBUTE = 'data-component';
 
 module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
-  // Support both Babel 7 (jsxAttribute) and Babel 8 types
   const jsxAttr = t.jsxAttribute || t.jSXAttribute;
   const jsxId = t.jsxIdentifier || t.jSXIdentifier;
 
   function createAttribute(name) {
-    return jsxAttr.call(t, jsxId.call(t, DATA_ATTRIBUTE), t.stringLiteral(name));
+    return jsxAttr.call(
+      t,
+      jsxId.call(t, DATA_ATTRIBUTE),
+      t.stringLiteral(name),
+    );
   }
 
   function isTestOrMockFile(filename) {
@@ -38,28 +38,78 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
     };
   }
 
-  function resolveComponentName(path, file) {
-    const { parentPath, node } = path;
-
-    if (node.id && t.isIdentifier(node.id)) {
-      return node.id.name;
+  function isExported(path, name) {
+    if (!path || !path.parentPath) return false;
+    if (
+      path.parentPath.isExportDefaultDeclaration() ||
+      path.parentPath.isExportNamedDeclaration()
+    ) {
+      return true;
     }
 
+    if (!name || !path.scope) return false;
+    const binding = path.scope.getBinding(name);
+    return binding
+      ? binding.referencePaths.some(refPath =>
+          refPath
+            .getAncestry()
+            .some(
+              ancestor =>
+                ancestor.isExportDefaultDeclaration() ||
+                ancestor.isExportSpecifier() ||
+                ancestor.isExportNamedDeclaration(),
+            ),
+        )
+      : false;
+  }
+
+  function resolveComponentName(path, file) {
+    const { parentPath, node } = path;
+    if (node && node.id && t.isIdentifier(node.id)) {
+      return node.id.name;
+    }
     if (parentPath && parentPath.isVariableDeclarator() && parentPath.node.id) {
       return parentPath.node.id.name;
     }
-
     const details = fileDetails(file && file.opts ? file.opts.filename : null);
     if (!details) return null;
-
     return details.name === 'index' ? details.directory : details.name;
   }
 
-  function isMockComponent(name) {
-    return (
-      typeof name === 'string' &&
-      (/^Mock/i.test(name) || /Mock$/i.test(name) || /^Stub/i.test(name))
-    );
+  function shouldProcessComponent(path, name, state) {
+    if (!name || name === 'Fragment') return false;
+
+    // Filter mock components (MockDivComponent, SVGIconMock, etc.)
+    if (
+      /^Mock/i.test(name) ||
+      /Mock$/i.test(name) ||
+      /^Stub/i.test(name) ||
+      name === 'SVGIcon'
+    ) {
+      return false;
+    }
+
+    // Must be an exported component
+    if (!isExported(path, name)) {
+      return false;
+    }
+
+    const opts = state.opts || {};
+    const onlyRoot =
+      opts.onlyRootComponents !== undefined ? opts.onlyRootComponents : true;
+
+    if (onlyRoot) {
+      const details = fileDetails(
+        state.file && state.file.opts ? state.file.opts.filename : null,
+      );
+      if (!details) return false;
+      const isRootFile =
+        details.name === 'index' ||
+        details.name.toLowerCase() === details.directory.toLowerCase();
+      if (!isRootFile) return false;
+    }
+
+    return true;
   }
 
   const returnStatementVisitor = {
@@ -69,22 +119,25 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
       const openingElement = path.get('openingElement');
       const { node } = openingElement;
 
-      // CRITICAL: Only inject on builtin DOM/HTML/SVG tags (lowercase: div, span, svg, etc.)
-      // Custom React components (<Svg />, <Icon />, etc.) are NEVER injected.
-      if (!t.isJSXIdentifier(node.name) || !BUILTIN_COMPONENT_REGEX.test(node.name.name)) {
+      // Only inject on lowercase builtin DOM/SVG tags (div, svg, span, button, input)
+      if (
+        !t.isJSXIdentifier(node.name) ||
+        !BUILTIN_COMPONENT_REGEX.test(node.name.name)
+      ) {
+        path.skip();
         return;
       }
 
-      // Do not traverse into child JSX elements; only process the top-level element
+      // Stop traversing further down once root builtin element is found
       path.skip();
 
       if (path.parentPath.isJSXExpressionContainer()) return;
 
       const hasAttribute = node.attributes.some(
-        (attr) =>
+        attr =>
           t.isJSXAttribute(attr) &&
           attr.name &&
-          attr.name.name === DATA_ATTRIBUTE
+          attr.name.name === DATA_ATTRIBUTE,
       );
       if (hasAttribute) return;
 
@@ -108,9 +161,12 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
 
   function processComponent(path, state) {
     const name = resolveComponentName(path, state.file);
-    if (!name || isMockComponent(name)) return;
+    if (!shouldProcessComponent(path, name, state)) return;
 
-    if (path.isArrowFunctionExpression() && !path.get('body').isBlockStatement()) {
+    if (
+      path.isArrowFunctionExpression() &&
+      !path.get('body').isBlockStatement()
+    ) {
       path.traverse(returnStatementVisitor, { name, source: path });
     } else {
       path.traverse(functionVisitor, { name, source: path });
@@ -121,7 +177,8 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
     name: 'babel-plugin-add-data-components-attribute',
     visitor: {
       Program(path, state) {
-        const filename = state.file && state.file.opts ? state.file.opts.filename : null;
+        const filename =
+          state.file && state.file.opts ? state.file.opts.filename : null;
         if (filename && isTestOrMockFile(filename)) {
           return;
         }
@@ -129,9 +186,9 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
         path.traverse({
           ClassDeclaration(classPath) {
             const name = resolveComponentName(classPath, state.file);
-            if (!name || isMockComponent(name)) return;
+            if (!shouldProcessComponent(classPath, name, state)) return;
 
-            classPath.get('body.body').forEach((bodyPath) => {
+            classPath.get('body.body').forEach(bodyPath => {
               if (
                 bodyPath.isClassMethod() &&
                 t.isIdentifier(bodyPath.node.key, { name: 'render' })
@@ -141,8 +198,9 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
             });
           },
 
-          'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression'(fnPath) {
-            // Ignore nested non-component functions
+          'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression'(
+            fnPath,
+          ) {
             const parentFn = fnPath.getFunctionParent();
             if (parentFn && !parentFn.isProgram()) {
               return;

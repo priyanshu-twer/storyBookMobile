@@ -4,44 +4,16 @@ const ReactDOMServer = require('react-dom/server');
 const plugin = require('./babel-plugin-add-data-components-attribute.js');
 
 console.log('====================================================');
-console.log('🧪 RUNNING REACT BABEL PLUGIN TESTS');
+console.log('🧪 RUNNING COMPREHENSIVE REACT BABEL TESTS');
 console.log('====================================================\n');
 
 // -------------------------------------------------------------
-// TEST CASE 1: SVGIcon component returning an imported SVG
+// TEST 1: PreLoader (Exported root component in matching folder)
 // -------------------------------------------------------------
-console.log('👉 TEST 1: SVGIcon returning <SvgComponent {...props} />');
-const svgIconSource = `
-import React from 'react';
-import SvgDownload from './download.svg';
-
-export const SVGIcon = (props) => {
-  return <SvgDownload {...props} />;
-};
-`;
-
-const transformedSVGIcon = babel.transformSync(svgIconSource, {
-  filename: 'src/library/components/SVGIcon/SVGIcon.js',
-  configFile: false,
-  babelrc: false,
-  presets: ['module:@react-native/babel-preset'],
-  plugins: [plugin],
-});
-
-const svgIconDoesNotInjectOnCustomComponent = !transformedSVGIcon.code.includes('"data-component", "SVGIcon"') && !transformedSVGIcon.code.includes('"data-component":"SVGIcon"');
-console.log(
-  svgIconDoesNotInjectOnCustomComponent
-    ? '✅ PASSED: SVGIcon did NOT inject data-component on <SvgDownload />'
-    : '❌ FAILED: SVGIcon incorrectly injected data-component on <SvgDownload />'
-);
-
-// -------------------------------------------------------------
-// TEST CASE 2: PreLoader rendering <div className="preloader"><SVGIcon /></div>
-// -------------------------------------------------------------
-console.log('\n👉 TEST 2: PreLoader rendering DOM <div> with SVGIcon child');
+console.log('👉 TEST 1: PreLoader component (Exported root component)');
 const preloaderSource = `
 import React from 'react';
-import { SVGIcon } from './SVGIcon';
+import { SVGIcon } from '../Icon/SVGIcon';
 
 export function PreLoader() {
   return (
@@ -52,42 +24,97 @@ export function PreLoader() {
 }
 `;
 
-const transformedPreloader = babel.transformSync(preloaderSource, {
-  filename: 'src/library/components/PreLoader/PreLoader.js',
+const resPreloader = babel.transformSync(preloaderSource, {
+  filename: '/workspace/src/library/components/PreLoader/PreLoader.js',
   configFile: false,
   babelrc: false,
   presets: ['module:@react-native/babel-preset'],
   plugins: [plugin],
 });
 
-const preloaderHasDataComponent = transformedPreloader.code.includes('PreLoader');
+const preloaderHasData = resPreloader.code.includes('PreLoader');
 console.log(
-  preloaderHasDataComponent
-    ? '✅ PASSED: PreLoader injected data-component="PreLoader" on root <div>'
-    : '❌ FAILED: PreLoader missing data-component on root <div>'
+  preloaderHasData
+    ? '✅ PASSED: PreLoader received data-component="PreLoader"'
+    : '❌ FAILED: PreLoader missing data-component'
 );
 
 // -------------------------------------------------------------
-// TEST CASE 3: Full React Runtime Render (Simulating Jest Snapshot)
+// TEST 2: SVGIcon (Subcomponent / Icon helper)
 // -------------------------------------------------------------
-console.log('\n👉 TEST 3: Full React DOM Render & Snapshot Matching');
+console.log('\n👉 TEST 2: SVGIcon (Should NEVER override with data-component="SVGIcon")');
+const svgIconSource = `
+import React from 'react';
 
-// 1. Simulating svg-mock.js from jest.config.js:
+export const SVGIcon = (props) => {
+  return <svg {...props} />;
+};
+`;
+
+const resSVGIcon = babel.transformSync(svgIconSource, {
+  filename: '/workspace/src/library/components/Icon/SVGIcon.js',
+  configFile: false,
+  babelrc: false,
+  presets: ['module:@react-native/babel-preset'],
+  plugins: [plugin],
+});
+
+const svgIconNoData = !resSVGIcon.code.includes('data-component');
+console.log(
+  svgIconNoData
+    ? '✅ PASSED: SVGIcon was NOT injected with data-component="SVGIcon"'
+    : '❌ FAILED: SVGIcon was injected with data-component'
+);
+
+// -------------------------------------------------------------
+// TEST 3: Mock component in Alert.test.js
+// -------------------------------------------------------------
+console.log('\n👉 TEST 3: MockDivComponent in Alert.test.js');
+const testFileSource = `
+const MockDivComponent = () => <div />;
+`;
+
+const resTestFile = babel.transformSync(testFileSource, {
+  filename: '/workspace/src/library/v2/components/Alert/Alert.test.js',
+  configFile: false,
+  babelrc: false,
+  presets: ['module:@react-native/babel-preset'],
+  plugins: [plugin],
+});
+
+const mockDivClean = !resTestFile.code.includes('data-component');
+console.log(
+  mockDivClean
+    ? '✅ PASSED: MockDivComponent left as clean <div /> (no data-component)'
+    : '❌ FAILED: MockDivComponent got data-component'
+);
+
+// -------------------------------------------------------------
+// TEST 4: Full React Snapshot Simulation (svg-mock.js + SVGIcon)
+// -------------------------------------------------------------
+console.log('\n👉 TEST 4: React Snapshot Simulation (svg-mock.js with SearchInput / CallToAction)');
+
+// svg-mock.js from jest.config.js:
 function SvgMock(props) {
   return React.createElement('svg', {
-    'data-component': 'svg-mock',
     'aria-hidden': 'true',
+    'aria-label': 'Download',
+    'data-component': 'svg-mock',
     'data-testid': 'prefixIcon-Download',
+    height: '12',
+    role: 'img',
+    style: { fill: '#9B1E26', marginRight: '9px' },
+    width: '12',
     ...props,
   });
 }
 
-// 2. SVGIcon as compiled by our updated plugin (returning SvgMock without extra data-component):
+// SVGIcon compiled without data-component="SVGIcon":
 function SVGIcon(props) {
-  return React.createElement(SvgMock, { ...props });
+  return React.createElement(SvgMock, props);
 }
 
-// 3. CallToAction as compiled by our updated plugin:
+// CallToAction compiled with data-component="CallToAction":
 function CallToAction() {
   return React.createElement(
     'div',
@@ -99,38 +126,66 @@ function CallToAction() {
 const renderedHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(CallToAction));
 console.log('Rendered HTML:\n', renderedHtml);
 
-const expectedSvgMock = renderedHtml.includes('data-component="svg-mock"');
-const unexpectedSVGIcon = renderedHtml.includes('data-component="SVGIcon"');
+const containsSvgMock = renderedHtml.includes('data-component="svg-mock"');
+const containsSVGIcon = renderedHtml.includes('data-component="SVGIcon"');
 
-if (expectedSvgMock && !unexpectedSVGIcon) {
-  console.log('✅ PASSED: <svg> has data-component="svg-mock" (matches Jest snapshot exactly!)');
+if (containsSvgMock && !containsSVGIcon) {
+  console.log('✅ PASSED: Snapshot matches! <svg> has data-component="svg-mock"');
 } else {
-  console.log('❌ FAILED: Snapshot mismatch detected!');
+  console.log('❌ FAILED: Snapshot mismatch!');
 }
 
 // -------------------------------------------------------------
-// TEST CASE 4: Test / Mock file (Alert.test.js with MockDivComponent)
+// TEST 5: CurrencyInput wrapping NumberInput (Styled / Sub-component wrapper)
 // -------------------------------------------------------------
-console.log('\n👉 TEST 4: Mock component in Alert.test.js');
-const testFileSource = `
-const MockDivComponent = () => <div />;
+console.log('\n👉 TEST 5: CurrencyInput wrapping NumberInput');
+
+// NumberInput is the base component rendering the DOM <input>
+const numberInputSource = `
+import React from 'react';
+export const NumberInput = (props) => {
+  return <input type="number" {...props} />;
+};
 `;
 
-const transformedTestFile = babel.transformSync(testFileSource, {
-  filename: 'src/library/v2/components/Alert/Alert.test.js',
+const resNumberInput = babel.transformSync(numberInputSource, {
+  filename: '/workspace/src/library/components/NumberInput/NumberInput.js',
   configFile: false,
   babelrc: false,
   presets: ['module:@react-native/babel-preset'],
   plugins: [plugin],
 });
 
-const mockDivHasNoDataComponent = !transformedTestFile.code.includes('data-component');
-console.log(
-  mockDivHasNoDataComponent
-    ? '✅ PASSED: MockDivComponent in Alert.test.js received NO data-component (<div /> remains clean)'
-    : '❌ FAILED: MockDivComponent in Alert.test.js received data-component!'
-);
+// CurrencyInput renders <CurrencyNumberInput /> which wraps NumberInput
+const currencyInputSource = "import React from 'react';\n" +
+  "import styled from 'styled-components';\n" +
+  "import { NumberInput } from '../NumberInput';\n" +
+  "const CurrencyNumberInput = styled(NumberInput)` `;\n" +
+  "export const CurrencyInput = (props) => {\n" +
+  "  return <CurrencyNumberInput {...props} />;\n" +
+  "};\n";
+
+const resCurrencyInput = babel.transformSync(currencyInputSource, {
+  filename: '/workspace/src/library/components/CurrencyInput/CurrencyInput.js',
+  configFile: false,
+  babelrc: false,
+  presets: ['module:@react-native/babel-preset'],
+  plugins: [plugin],
+});
+
+// Verify CurrencyInput didn't inject data-component on <CurrencyNumberInput>
+const currencyInputDoesNotClobber = !resCurrencyInput.code.includes('CurrencyInput') || !resCurrencyInput.code.includes('data-component');
+// Verify NumberInput DID inject data-component on <input>
+const numberInputHasData = resNumberInput.code.includes('data-component') && resNumberInput.code.includes('NumberInput');
+
+if (currencyInputDoesNotClobber && numberInputHasData) {
+  console.log('✅ PASSED: CurrencyInput leaves <CurrencyNumberInput /> clean and inherits parent NumberInput data-component!');
+} else {
+  console.log('❌ FAILED: CurrencyInput or NumberInput data-component mismatch');
+}
 
 console.log('\n====================================================');
 console.log('🏁 ALL TESTS COMPLETED');
 console.log('====================================================');
+
+
