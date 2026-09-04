@@ -1,142 +1,229 @@
 'use strict';
 
-const { basename, extname, dirname } = require('path');
+/**
+ * Drop-in Babel 7 + Babel 8 compatible version of:
+ * https://github.com/lemonmade/babel-plugin-react-component-data-attribute
+ *
+ * ONLY change from original: t.jSXAttribute -> (t.jsxAttribute || t.jSXAttribute)
+ * and t.jSXIdentifier -> (t.jsxIdentifier || t.jSXIdentifier) for Babel 8 compat.
+ * Everything else is IDENTICAL to the original lemonmade source.
+ */
 
-const ATTR = 'data-component';
+const {extname, basename, dirname} = require('path');
 
-function getComponentName(path, file) {
-  const { node, parentPath } = path;
-  if (node && node.id && node.id.name) return node.id.name;
+const BUILTIN_COMPONENT_REGEX = /^[a-z]+$/;
+const DATA_ATTRIBUTE = 'data-component';
 
-  if (parentPath) {
-    if (parentPath.isVariableDeclarator && parentPath.isVariableDeclarator()) {
-      if (parentPath.node.id && parentPath.node.id.name) return parentPath.node.id.name;
+function babelPluginReactComponentDataAttribute({types: t}) {
+  // Babel 8 renamed t.jSXAttribute -> t.jsxAttribute, t.jSXIdentifier -> t.jsxIdentifier
+  const _jSXAttribute = t.jsxAttribute || t.jSXAttribute;
+  const _jSXIdentifier = t.jsxIdentifier || t.jSXIdentifier;
+
+  function createAttribute(name) {
+    return _jSXAttribute(_jSXIdentifier(DATA_ATTRIBUTE), t.stringLiteral(name));
+  }
+
+  function createObjectProperty(name) {
+    return t.objectProperty(t.stringLiteral(DATA_ATTRIBUTE), t.stringLiteral(name));
+  }
+
+  function fileDetails({opts: {filename}}) {
+    if (filename === 'unknown' || filename == null) { return null; }
+    return {
+      directory: basename(dirname(filename)),
+      name: basename(filename, extname(filename)),
+    };
+  }
+
+  function isExported(path, name) {
+    if (
+      path.parentPath.isExportDefaultDeclaration() ||
+      path.parentPath.isExportNamedDeclaration()
+    ) { return true; }
+
+    const binding = path.scope.getBinding(name);
+
+    return binding
+      ? binding.referencePaths.some((referencePath) => (
+        referencePath.getAncestry().some((ancestorPath) => (
+          ancestorPath.isExportDefaultDeclaration() ||
+          ancestorPath.isExportSpecifier() ||
+          ancestorPath.isExportNamedDeclaration()
+        ))
+      ))
+      : false;
+  }
+
+  function evaluatePotentialComponent(path, state) {
+    const name = nameForReactComponent(path, state.file);
+    const overrides = name && getoverrides(name, state.opts.overrides);
+
+    let process;
+
+    if (overrides != null && overrides.process != null) {
+      process = overrides.process;
+    } else {
+      process = (name != null) && shouldProcessPotentialComponent(path, name, state);
     }
-    // Handle HOCs: React.memo(Component), React.forwardRef(Component)
-    if (parentPath.isCallExpression && parentPath.isCallExpression()) {
-      const grandParent = parentPath.parentPath;
-      if (grandParent && grandParent.isVariableDeclarator && grandParent.isVariableDeclarator()) {
-        if (grandParent.node.id && grandParent.node.id.name) return grandParent.node.id.name;
+
+    return {
+      name: (overrides && overrides.name) || name || '',
+      process,
+      overrides,
+    };
+  }
+
+  function shouldProcessPotentialComponent(path, name, state) {
+    // Babel 7 returns null instead of Program from path.getFunctionParent if parent is not a function
+    if (typeof path.scope.getProgramParent === 'function') {
+      if (!path.scope.getProgramParent()) {
+        return false;
       }
-      if (parentPath.node.arguments) {
-        const idArg = parentPath.node.arguments.find(a => a && a.name);
-        if (idArg) return idArg.name;
+    } else if (!path.getFunctionParent() || !path.getFunctionParent().isProgram()) {
+      return false;
+    }
+
+    if (path.parentPath.isAssignmentExpression()) { return false; }
+
+    const {onlyRootComponents = false} = state.opts || {};
+    if (!onlyRootComponents) { return true; }
+
+    const details = fileDetails(state.file);
+    if (details == null) { return false; }
+    if (details.name !== 'index' && details.name !== details.directory) { return false; }
+
+    return isExported(path, name);
+  }
+
+  function nameForReactComponent(path, file) {
+    const {parentPath, node: {id}} = path;
+
+    if (t.isIdentifier(id)) {
+      return id.name;
+    }
+
+    if (parentPath.isVariableDeclarator()) {
+      return parentPath.node.id.name;
+    }
+
+    const details = fileDetails(file);
+    if (details == null) { return details; }
+
+    return details.name === 'index'
+      ? details.directory
+      : details.name;
+  }
+
+  const returnStatementVisitor = {
+    JSXElement(path, {name, source}) {
+      // Bail early if we are in a different function than the component
+      if (path.getFunctionParent() !== source) { return; }
+
+      const openingElement = path.get('openingElement');
+      const {node} = openingElement;
+      if (!t.isJSXIdentifier(node.name) || !BUILTIN_COMPONENT_REGEX.test(node.name.name)) { return; }
+
+      // We never want to go into a tree of JSX elements, only ever process the top-level item
+      path.skip();
+
+      // If we are in a regular prop (not children, bail out)
+      if (path.parentPath.isJSXExpressionContainer()) { return; }
+
+      const hasDataAttribute = node.attributes.some((attribute) => (
+        t.isJSXIdentifier(attribute.name, {name: DATA_ATTRIBUTE})
+      ));
+      if (hasDataAttribute) { return; }
+
+      node.attributes.push(createAttribute(name));
+    },
+    CallExpression(path, {name, source}) {
+      // Bail early if we are in a different function than the component
+      if (path.getFunctionParent() !== source) { return; }
+      if (!path.get('callee').isMemberExpression()) { return; }
+      if (!path.get('callee.object').isIdentifier({name: 'React'})) { return; }
+      if (!path.get('callee.property').isIdentifier({name: 'createElement'})) { return; }
+
+      const {arguments: args} = path.node;
+      if (args.length === 1) {
+        args.push(t.objectExpression([createObjectProperty(name)]));
+        return;
       }
-    }
-  }
 
-  // Fallback to filename for default exports
-  const filename = file && file.opts && file.opts.filename;
-  if (filename && filename !== 'unknown') {
-    const name = basename(filename, extname(filename));
-    return name === 'index' ? basename(dirname(filename)) : name;
-  }
+      const secondArgument = path.get('arguments.1');
+      if (!secondArgument.isObjectExpression()) { return; }
 
-  return null;
-}
+      const hasDataAttribute = secondArgument.node.properties.some((property) => (
+        t.isStringLiteral(property.key, {value: DATA_ATTRIBUTE})
+      ));
+      if (hasDataAttribute) { return; }
 
-function isComponent(name) {
-  return typeof name === 'string' && /^[A-Z][a-zA-Z0-9_]*$/.test(name);
-}
+      secondArgument.node.properties.push(createObjectProperty(name));
+    },
+  };
 
-function addDataAttr(jsxElement, name, t) {
-  if (!jsxElement || jsxElement.type !== 'JSXElement') return;
-  const opening = jsxElement.openingElement;
-  if (!opening || !opening.name) return;
+  const functionVisitor = {
+    ReturnStatement(path, {name, source}) {
+      const arg = path.get('argument');
 
-  // For Fragments, attach attribute to immediate child elements
-  const tag = opening.name.name || (opening.name.property && opening.name.property.name);
-  if (!tag || tag === 'Fragment' || tag === 'React.Fragment') {
-    if (jsxElement.children) {
-      jsxElement.children.forEach(child => addDataAttr(child, name, t));
-    }
-    return;
-  }
+      if (arg.isIdentifier()) {
+        const binding = path.scope.getBinding(arg.node.name);
+        if (binding == null) { return; }
+        binding.path.traverse(returnStatementVisitor, {name, source});
+      } else {
+        path.traverse(returnStatementVisitor, {name, source});
+      }
+    },
+  };
 
-  const jsxAttr = t.jsxAttribute || t.jSXAttribute;
-  const jsxId = t.jsxIdentifier || t.jSXIdentifier;
+  const programVisitor = {
+    'ClassDeclaration|ClassExpression': (path, state) => {
+      const {name, process, overrides} = evaluatePotentialComponent(path, state);
+      if (!process) { return; }
 
-  const hasAttr = opening.attributes && opening.attributes.some(
-    attr =>
-      attr.type === 'JSXAttribute' &&
-      (attr.name && (attr.name.name === ATTR || (attr.name.name && attr.name.name.name === ATTR)))
-  );
+      path
+        .get('body.body')
+        .filter((bodyPath) => {
+          const {key} = bodyPath.node;
 
-  if (!hasAttr && opening.attributes) {
-    opening.attributes.push(
-      jsxAttr.call(t, jsxId.call(t, ATTR), t.stringLiteral(name))
-    );
-  }
-}
+          return (
+            bodyPath.isClassMethod() &&
+            t.isIdentifier(key) &&
+            !key.computed &&
+            overrides.methods.includes(key.name)
+          );
+        })
+        .forEach((renderPath) => {
+          renderPath.traverse(functionVisitor, {name, source: renderPath, overrides});
+        });
+    },
+    'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression': (path, state) => {
+      const {name, process, overrides} = evaluatePotentialComponent(path, state);
+      if (!process) { return; }
 
-function processReturnNode(node, name, t, scope) {
-  if (!node) return;
-  if (node.type === 'JSXElement') {
-    addDataAttr(node, name, t);
-  } else if (node.type === 'ConditionalExpression') {
-    processReturnNode(node.consequent, name, t, scope);
-    processReturnNode(node.alternate, name, t, scope);
-  } else if (node.type === 'LogicalExpression') {
-    processReturnNode(node.right, name, t, scope);
-  } else if (node.type === 'Identifier' && scope) {
-    const binding = scope.getBinding(node.name);
-    if (binding && binding.path && binding.path.isVariableDeclarator && binding.path.isVariableDeclarator()) {
-      processReturnNode(binding.path.node.init, name, t, scope);
-    }
-  }
-}
+      if (path.isArrowFunctionExpression() && !path.get('body').isBlockStatement()) {
+        path.traverse(returnStatementVisitor, {name, source: path, overrides});
+      } else {
+        path.traverse(functionVisitor, {name, source: path, overrides});
+      }
+    },
+  };
 
-function babelPluginReactComponentDataAttribute({ types: t }) {
   return {
-    name: 'babel-plugin-add-data-components-attribute',
+    name: 'babel-plugin-react-component-data-attribute',
     visitor: {
-      'ClassDeclaration|ClassExpression'(path, state) {
-        const name = (path.node.id && path.node.id.name) || getComponentName(path, state.file);
-        if (!name || !isComponent(name)) return;
-        const override = state.opts && state.opts.overrides && state.opts.overrides[name];
-        if (override && override.process === false) return;
-        const finalName = (override && override.name) || name;
-        const methods = (state.opts && state.opts.methods) || ['render'];
-
-        path.get('body.body').forEach(member => {
-          if (member.isClassMethod && member.isClassMethod() && methods.includes(member.node.key && member.node.key.name)) {
-            member.traverse({
-              Function(inner) { inner.skip(); },
-              ReturnStatement(ret) {
-                if (ret.node.argument) processReturnNode(ret.node.argument, finalName, t, ret.scope);
-              },
-            });
-          }
-        });
-      },
-
-      Function(path, state) {
-        if (path.isClassMethod && path.isClassMethod()) return;
-
-        const name = getComponentName(path, state.file);
-        if (!name || !isComponent(name)) return;
-
-        const override = state.opts && state.opts.overrides && state.opts.overrides[name];
-        if (override && override.process === false) return;
-        const finalName = (override && override.name) || name;
-
-        if (path.isArrowFunctionExpression && path.isArrowFunctionExpression() && path.node.body.type !== 'BlockStatement') {
-          processReturnNode(path.node.body, finalName, t, path.scope);
-          return;
-        }
-
-        path.traverse({
-          Function(innerPath) {
-            innerPath.skip();
-          },
-          ReturnStatement(retPath) {
-            if (retPath.node.argument) {
-              processReturnNode(retPath.node.argument, finalName, t, retPath.scope);
-            }
-          },
-        });
+      Program(path, state) {
+        path.traverse(programVisitor, state);
       },
     },
+  };
+}
+
+function getoverrides(component, overrides = {}) {
+  const overide = overrides.hasOwnProperty(component) ? overrides[component] : {};
+  return {
+    name: overide.name || component,
+    process: overide.process,
+    methods: overide.methods || ['render'],
   };
 }
 
