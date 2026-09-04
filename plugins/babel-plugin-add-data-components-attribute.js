@@ -6,6 +6,7 @@
 
 const { extname, basename, dirname } = require('path');
 
+const BUILTIN_REGEX = /^[a-z]+[a-z0-9-]*$/;
 const DATA_ATTR = 'data-component';
 
 function getOverrides(component, overrides = {}) {
@@ -42,18 +43,15 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
     };
   };
 
-  // Original lemonmade behavior: Matches direct declaration exports only
-  function isExported(path) {
+  function isExported(path, name) {
     if (!path) return false;
-    const parent = path.parentPath;
     if (
-      parent?.isExportDefaultDeclaration() ||
-      parent?.isExportNamedDeclaration()
+      path.parentPath?.isExportDefaultDeclaration() ||
+      path.parentPath?.isExportNamedDeclaration()
     )
       return true;
-
-    if (parent?.isVariableDeclarator()) {
-      const grandParent = parent.parentPath;
+    if (path.parentPath?.isVariableDeclarator()) {
+      const grandParent = path.parentPath.parentPath;
       if (
         grandParent?.isVariableDeclaration() &&
         grandParent.parentPath?.isExportNamedDeclaration()
@@ -61,7 +59,20 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
         return true;
       }
     }
-    return false;
+    if (!name || !path.scope) return false;
+    const binding = path.scope.getBinding(name);
+    return binding
+      ? binding.referencePaths.some(ref =>
+          ref
+            .getAncestry()
+            .some(
+              a =>
+                a.isExportDefaultDeclaration() ||
+                a.isExportSpecifier() ||
+                a.isExportNamedDeclaration(),
+            ),
+        )
+      : false;
   }
 
   function nameForReactComponent(path, file) {
@@ -103,7 +114,7 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
     )
       return false;
 
-    return isExported(path);
+    return isExported(path, name);
   }
 
   function evaluatePotentialComponent(path, state) {
@@ -132,6 +143,15 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
       if (path.getFunctionParent() !== source) return;
       const { node } = path.get('openingElement');
 
+      // Restricts data-component to built-in DOM elements (lowercase) like original lemonmade plugin
+      if (
+        !t.isJSXIdentifier(node.name) ||
+        !BUILTIN_REGEX.test(node.name.name)
+      ) {
+        path.skip();
+        return;
+      }
+
       path.skip();
 
       if (path.parentPath.isJSXExpressionContainer()) return;
@@ -139,9 +159,7 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
       const hasAttr = node.attributes.some(
         a => t.isJSXAttribute(a) && a.name?.name === DATA_ATTR,
       );
-      if (!hasAttr) {
-        node.attributes.push(createAttribute(name));
-      }
+      if (!hasAttr) node.attributes.push(createAttribute(name));
     },
 
     CallExpression(path, { name, source }) {
@@ -154,7 +172,9 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
       const args = path.node.arguments;
       if (!args || args.length === 0) return;
 
-      path.skip();
+      const firstArg = args[0];
+      if (!t.isStringLiteral(firstArg) || !BUILTIN_REGEX.test(firstArg.value))
+        return;
 
       if (args.length === 1) {
         args.push(t.objectExpression([createObjectProperty(name)]));
@@ -185,7 +205,7 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
   const functionVisitor = {
     ReturnStatement(path, { name, source, overrides }) {
       const arg = path.get('argument');
-      if (arg && arg.isIdentifier()) {
+      if (arg && arg.node && arg.isIdentifier()) {
         const binding = path.scope.getBinding(arg.node.name);
         if (binding)
           binding.path.traverse(returnStatementVisitor, {
@@ -193,7 +213,7 @@ module.exports = function babelPluginReactComponentDataAttribute({ types: t }) {
             source,
             overrides,
           });
-      } else {
+      } else if (arg && arg.node) {
         path.traverse(returnStatementVisitor, { name, source, overrides });
       }
     },
